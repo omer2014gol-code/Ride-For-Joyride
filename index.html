@@ -820,7 +820,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   // ---------- Spock Hop game ----------
   // Tap to hop Spock (Ryan's dog) through the gaps between store pillars.
   // Best score lives on each account in profiles/<uid>: accounts[i].best
-  const CHAINS = [["Walmart", "#0071ce", "#ffc220"], ["Target", "#cc0000", "#ffffff"], ["7-Eleven", "#008163", "#ee2737"], ["Kroger", "#134b97", "#ffffff"], ["Safeway", "#e21a2c", "#ffffff"], ["Sprouts", "#4a8a2b", "#ffffff"], ["Albertsons", "#0b5aa8", "#ffffff"], ["H-E-B", "#ee3124", "#ffffff"], ["Hy-Vee", "#e31837", "#ffffff"], ["REI", "#3c5a2f", "#ffffff"], ["Vons", "#d71920", "#ffffff"], ["ACME", "#e2231a", "#ffffff"], ["Tom Thumb", "#c8102e", "#ffffff"]];
+  const CHAINS = [["Walmart", "#0071ce", "#ffc220"], ["Target", "#cc0000", "#ffffff"], ["7-Eleven", "#008163", "#ffffff"], ["Kroger", "#134b97", "#ffffff"], ["Safeway", "#e21a2c", "#ffffff"], ["Sprouts", "#4a8a2b", "#ffffff"], ["Albertsons", "#0b5aa8", "#ffffff"], ["H-E-B", "#ee3124", "#ffffff"], ["Hy-Vee", "#e31837", "#ffffff"], ["REI", "#3c5a2f", "#ffffff"], ["Vons", "#d71920", "#ffffff"], ["ACME", "#e2231a", "#ffffff"], ["Tom Thumb", "#c8102e", "#ffffff"]];
   const SPOCK = new Image(); SPOCK.src = "icons/spock.png";
   let gameRunning = false, gRaf = 0, gState = null;
   const cv = $("gCanvas"), ctx = cv.getContext("2d");
@@ -880,7 +880,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
   function newState(w, h) {
     const u = Math.min(h / 640, w / 360, 1.4);
-    return { w, h, u, x: w * 0.28, y: h * 0.42, vy: 0, r: 24 * u, g: 1500 * u, jump: 470 * u, speed: 150 * u, gap: 175 * u, pw: 66 * u, pipes: [], next: 0, score: 0, t: 0, started: false, ground: 0 };
+    return { w, h, u, x: w * 0.28, y: h * 0.42, vy: 0, r: 27 * u, g: 1500 * u, jump: 470 * u, speed: 150 * u, gap: 175 * u, pw: 66 * u, pipes: [], next: 0, score: 0, t: 0, started: false, ground: 0 };
   }
   function startGame() {
     $("gPanel").hidden = true;
@@ -909,7 +909,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     const spd = g.speed * (1 + Math.min(g.score, 40) * 0.012);
     g.vy += g.g * dt; g.y += g.vy * dt; g.ground = (g.ground + spd * dt) % (40 * g.u);
     g.next -= spd * dt; if (g.next <= 0) { addPipe(g); g.next = 230 * g.u; }
-    const floor = g.h - 30 * g.u, hr = g.r * 0.78;
+    const floor = g.h - 30 * g.u, hr = g.r * 0.8;
     if (g.y < g.r) { g.y = g.r; if (g.vy < 0) g.vy = 0; }
     let dead = g.y + hr > floor;
     for (let i = g.pipes.length - 1; i >= 0; i--) {
@@ -942,7 +942,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     ctx.rotate(Math.max(-0.45, Math.min(1.1, g.vy / (g.jump * 1.6))));
     const r = g.r;
     if (SPOCK.complete && SPOCK.naturalWidth) {
-      const k = (r * 2.3) / Math.max(SPOCK.naturalWidth, SPOCK.naturalHeight);
+      const k = (r * 2.8) / Math.max(SPOCK.naturalWidth, SPOCK.naturalHeight);
       ctx.drawImage(SPOCK, -SPOCK.naturalWidth * k / 2, -SPOCK.naturalHeight * k / 2, SPOCK.naturalWidth * k, SPOCK.naturalHeight * k);
     } else {
       ctx.fillStyle = "#6b4a2b"; ctx.beginPath(); ctx.ellipse(-r * .78, -r * .2, r * .38, r * .7, .35, 0, 7); ctx.ellipse(r * .78, -r * .2, r * .38, r * .7, -.35, 0, 7); ctx.fill();
