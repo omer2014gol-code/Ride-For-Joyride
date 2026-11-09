@@ -8,5 +8,5 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "835442550857",
   appId: "1:835442550857:web:fb0cfc6ccb2143c093b798",
   // The owner's user ID (shown in the profile screen after signing in). Gives access to the Admin page.
-  adminUid: ""
+  adminUid: "LQuMnhu5ViTrVALTnpHFwgHD5aa2"
 };

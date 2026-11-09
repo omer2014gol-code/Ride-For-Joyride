@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Replace ADMIN_UID with the owner's user ID (shown in the profile screen).
     function signedIn() { return request.auth != null; }
-    function isAdmin() { return signedIn() && request.auth.uid == "ADMIN_UID"; }
+    function isAdmin() { return signedIn() && request.auth.uid == "LQuMnhu5ViTrVALTnpHFwgHD5aa2"; }
     function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
 
     // Usernames and bag pictures: everyone signed in can see them; each person edits only their own.
