@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Replace ADMIN_UID with the owner's user ID (shown in the profile screen).
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.uid == "ADMIN_UID"; }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // Usernames and bag pictures: everyone signed in can see them; each person edits only their own.
+    match /profiles/{uid} {
+      allow read: if signedIn();
+      allow write: if isSelf(uid) || isAdmin();
+    }
+    // Each person's reports live in one document that only they can change.
+    match /reports/{uid} {
+      allow read: if signedIn();
+      allow write: if isSelf(uid) || isAdmin();
+    }
+    // Visit log: each person writes their own; only the owner can read everyone's.
+    match /visits/{uid} {
+      allow read: if isSelf(uid) || isAdmin();
+      allow write: if isSelf(uid);
+    }
+  }
+}

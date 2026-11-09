@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Find Ryan Trahan's Joyride candy in US stores. Community reports of what's on the shelf.">
+<link rel="icon" href="bags/sour-fun-drink-strips.png">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<title>Ride For Joyride</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@400;600;700;800&display=swap">
+<style>
+/* Layout: one column "shelf" of store cards under a sticky filter bar; the report form is a bottom sheet with step-by-step pickers. */
+:root {
+  --bg: #f7f4fb;
+  --surface: #ffffff;
+  --ink: #23143a;
+  --muted: #6c5f80;
+  --line: #e4dcef;
+  --accent: #d6246e;
+  --accent-ink: #ffffff;
+  --accent-soft: #fde4ef;
+  --few: #e5533d;
+  --some: #d38f0c;
+  --lots: #1f9d63;
+  --chip: #efe8f8;
+  --display: "Lilita One", "Arial Rounded MT Bold", "Arial Black", system-ui, sans-serif;
+  --body: "Nunito", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #160d24; --surface: #21152f; --ink: #f3ecfb; --muted: #a999bd; --line: #352650;
+    --accent: #ff4f96; --accent-ink: #1a0b1a; --accent-soft: #3a1830;
+    --few: #ff7a63; --some: #f4bb45; --lots: #3cc98a; --chip: #2d1f40; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #160d24; --surface: #21152f; --ink: #f3ecfb; --muted: #a999bd; --line: #352650;
+  --accent: #ff4f96; --accent-ink: #1a0b1a; --accent-soft: #3a1830;
+  --few: #ff7a63; --some: #f4bb45; --lots: #3cc98a; --chip: #2d1f40; color-scheme: dark;
+}
+/* Accent follows the signed-in account's bag colour (set from script as --bag / --bag-ink). */
+:root.has-bag { --accent: color-mix(in srgb, var(--bag) 82%, #000); --accent-soft: color-mix(in srgb, var(--bag) 20%, #fff); --accent-ink: var(--bag-ink); }
+@media (prefers-color-scheme: dark) { :root.has-bag:not([data-theme="light"]) { --accent: var(--bag); --accent-soft: color-mix(in srgb, var(--bag) 24%, #21152f); --accent-ink: #1a0b1a; } }
+:root.has-bag[data-theme="dark"] { --accent: var(--bag); --accent-soft: color-mix(in srgb, var(--bag) 24%, #21152f); --accent-ink: #1a0b1a; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 760px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 120px; display: flex; flex-direction: column; gap: 18px; }
+
+.brand h1 { font-family: var(--display); font-weight: 400; font-size: clamp(30px, 7vw, 46px); line-height: 1.02; margin: 0; text-wrap: balance; }
+.brand h1 span { color: var(--accent); }
+.brand p { margin: 8px 0 0; color: var(--muted); max-width: 56ch; }
+.btn { font: inherit; font-weight: 700; border: 0; border-radius: 999px; padding: 10px 18px; cursor: pointer; background: var(--accent); color: var(--accent-ink); }
+.btn:focus-visible, .chip:focus-visible, input:focus-visible, select:focus-visible, .lvl label:focus-within, .pick label:focus-within, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; display: flex; flex-direction: column; gap: 10px; }
+.search { display: flex; gap: 8px; flex-wrap: wrap; }
+.search input, .search select { flex: 1 1 160px; min-width: 0; font: inherit; padding: 10px 14px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); }
+.search input { flex-basis: 240px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font: inherit; font-size: 14px; font-weight: 600; border: 1.5px solid transparent; background: var(--chip); color: var(--ink); padding: 4px 12px; border-radius: 999px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+
+.summary { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.summary b { color: var(--ink); }
+.notice { background: var(--accent-soft); border-radius: 12px; padding: 10px 14px; font-size: 15px; }
+
+.list { display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; }
+.card.stale { opacity: .62; }
+.card h3 { margin: 0; font-size: 19px; line-height: 1.25; min-width: 0; overflow-wrap: anywhere; }
+.card h3 small { font-weight: 600; color: var(--muted); font-size: 15px; }
+.where { color: var(--muted); font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+.meter { grid-row: 1 / span 2; grid-column: 2; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.bars { display: flex; gap: 3px; align-items: flex-end; height: 30px; }
+.bars i { width: 9px; border-radius: 3px; background: var(--line); }
+.bars i { width: 7px; }
+.bars i:nth-child(1) { height: 8px; } .bars i:nth-child(2) { height: 13px; } .bars i:nth-child(3) { height: 19px; } .bars i:nth-child(4) { height: 24px; } .bars i:nth-child(5) { height: 30px; }
+.meter[data-l="low"] i:nth-child(-n+1) { background: var(--few); }
+.meter[data-l="few"] i:nth-child(-n+2) { background: var(--few); }
+.meter[data-l="some"] i:nth-child(-n+3) { background: var(--some); }
+.meter[data-l="lots"] i:nth-child(-n+4) { background: var(--lots); }
+.meter[data-l="full"] i:nth-child(-n+5) { background: var(--lots); }
+.meter small { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+.meter[data-l="out"] small, .meter[data-l="low"] small, .meter[data-l="few"] small { color: var(--few); } .meter[data-l="some"] small { color: var(--some); } .meter[data-l="lots"] small, .meter[data-l="full"] small { color: var(--lots); }
+.flv { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.flv span { font-size: 13px; background: var(--chip); padding: 2px 10px; border-radius: 999px; }
+.foot { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 4px; }
+.foot .acts { display: flex; gap: 14px; }
+.foot a, .foot button { color: var(--accent); font: inherit; font-weight: 700; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
+.foot .del { color: var(--few); }
+.confirm { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--accent-soft); border-radius: 10px; padding: 8px 12px; font-size: 14px; font-weight: 600; }
+.confirm .btn { padding: 6px 14px; font-size: 14px; }
+
+.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.top .brand { min-width: 0; }
+.avatar { width: 34px; height: 34px; border-radius: 50%; flex: none; overflow: hidden; background: var(--chip); border: 2px solid var(--surface); box-shadow: 0 0 0 1.5px var(--line); display: inline-grid; place-items: center; font-weight: 700; font-size: 14px; color: var(--muted); }
+.avatar img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; transform: scale(1.35); }
+.avatar.lg { width: 52px; height: 52px; font-size: 20px; }
+.avatar.sm { width: 22px; height: 22px; font-size: 10px; border-width: 1px; }
+.mebtn { background: none; border: 0; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; font-size: 12px; font-weight: 700; color: var(--muted); }
+.mebtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 12px; }
+.by { display: inline-flex; align-items: center; gap: 6px; }
+.who { display: flex; align-items: center; gap: 12px; }
+.who b { font-size: 18px; display: block; }
+.who small { color: var(--muted); }
+.bags { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.bags label { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px 8px; border: 2px solid transparent; border-radius: 16px; cursor: pointer; text-align: center; font-size: 11.5px; font-weight: 700; line-height: 1.2; background: var(--bg); transition: transform .15s, border-color .15s; }
+.bags .disc { width: 78px; height: 78px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--c) 45%, transparent), color-mix(in srgb, var(--c) 12%, transparent) 70%); }
+.bags img { width: 70px; height: 70px; object-fit: contain; filter: drop-shadow(0 3px 4px rgba(0,0,0,.18)); }
+.bags label:hover { transform: translateY(-2px); }
+.bags label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-2px); }
+.bags label:has(input:checked)::after { content: "\2713"; position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 13px; }
+.bags label:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+.bags input { position: absolute; opacity: 0; pointer-events: none; }
+.preview { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 16px; background: var(--bg); }
+.preview .avatar { width: 84px; height: 84px; font-size: 30px; border-width: 3px; box-shadow: 0 0 0 3px var(--accent); }
+.preview b { font-size: 20px; display: block; overflow-wrap: anywhere; }
+.preview small { color: var(--muted); }
+.field input { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); min-width: 0; }
+.hint { color: var(--muted); font-size: 13px; }
+.me-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: none; }
+.adminbtn { font: inherit; font-size: 12px; font-weight: 700; border: 1.5px solid var(--accent); color: var(--accent); background: transparent; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.badge { display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 7px; margin-left: 4px; vertical-align: 2px; }
+.ulist { display: flex; flex-direction: column; gap: 8px; }
+.urow { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 10px 12px; background: var(--bg); border-radius: 12px; }
+.urow b { display: block; overflow-wrap: anywhere; }
+.urow small { color: var(--muted); font-size: 12.5px; }
+.urow button { font: inherit; font-size: 13px; font-weight: 700; color: var(--few); background: none; border: 0; cursor: pointer; padding: 4px; }
+.ustats { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 14px; }
+.ustats b { color: var(--ink); }
+.acctbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.acctbar .btn { padding: 7px 14px; font-size: 14px; }
+.urow.choose { cursor: pointer; border: 2px solid transparent; }
+.urow.choose.on { border-color: var(--accent); background: var(--accent-soft); }
+.urow .tag { font-size: 12px; font-weight: 700; color: var(--accent); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.tile { background: var(--accent-soft); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.tile b { font-family: var(--display); font-weight: 400; font-size: 30px; line-height: 1.1; color: var(--accent); font-variant-numeric: tabular-nums; }
+.tile span { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.tile small { font-size: 11.5px; color: var(--muted); }
+.ah { margin: 6px 0 0; font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.vrow { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; font-size: 14px; padding: 4px 2px; }
+.vrow small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.gated .bar, .gated #summary, .gated #list, .gated #fab { display: none !important; }
+.signin { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px 18px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.signin strong { font-family: var(--display); font-weight: 400; font-size: 24px; }
+.signin p { margin: 0; color: var(--muted); }
+.uid { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; user-select: all; }
+.empty { text-align: center; padding: 40px 16px; color: var(--muted); border: 2px dashed var(--line); border-radius: 16px; }
+.empty strong { display: block; font-family: var(--display); font-weight: 400; font-size: 22px; color: var(--ink); margin-bottom: 6px; }
+
+.fab { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 6; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 14px 22px; font-size: 17px; }
+
+.scrim { position: fixed; inset: 0; background: rgba(20, 8, 30, .45); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--surface); width: 100%; max-width: 560px; max-height: 92%; overflow-y: auto; border-radius: 20px 20px 0 0; padding: 18px max(18px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 14px; }
+.sheet h2 { font-family: var(--display); font-weight: 400; margin: 0; font-size: 26px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field > span { font-weight: 700; font-size: 14px; letter-spacing: .02em; }
+.field select { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); min-width: 0; }
+.pick { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; border: 1.5px solid var(--line); border-radius: 12px; padding: 6px; background: var(--bg); }
+.pick label { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 9px; cursor: pointer; border: 1.5px solid transparent; }
+.pick label:hover { background: var(--chip); }
+.pick label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.pick input { position: absolute; opacity: 0; pointer-events: none; }
+.pick b { font-size: 15px; }
+.pick b span { color: var(--muted); font-weight: 600; }
+.pick small { color: var(--muted); font-size: 12.5px; }
+.pick .none { color: var(--muted); padding: 8px 10px; font-size: 14px; }
+.lvl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.lvl label { border: 2px solid var(--line); border-radius: 12px; padding: 10px 6px; text-align: center; cursor: pointer; font-weight: 700; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.lvl input { position: absolute; opacity: 0; pointer-events: none; }
+.lvl label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.lvl .meter { grid-row: auto; grid-column: auto; }
+.err { color: var(--few); font-weight: 700; font-size: 14px; margin: 0; }
+.actions { display: flex; gap: 10px; }
+.toast { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 999px; z-index: 30; font-weight: 700; }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: up .22s ease-out; } @keyframes up { from { transform: translateY(30px); opacity: .6; } } }
+</style>
+</head>
+<body>
+
+<div class="wrap" lang="en">
+  <div class="top">
+    <header class="brand">
+      <h1>Ride For <span>Joyride</span></h1>
+      <p>A community tracker for Ryan Trahan's Joyride candy across the US. Spotted it on a shelf? Report how much is left and which kinds are there.</p>
+    </header>
+    <div class="me-wrap">
+      <button class="mebtn" id="mebtn" type="button" aria-label="Your profile" hidden><span class="avatar lg" id="meAvatar"></span><span>You</span></button>
+      <button class="adminbtn" id="adminbtn" type="button" hidden>Admin</button>
+    </div>
+  </div>
+
+  <div class="bar">
+    <div class="search">
+      <input id="q" type="search" placeholder="Search store, city or address" aria-label="Search">
+      <select id="stateFilter" aria-label="Filter by state"><option value="">All states</option></select>
+      <select id="regionFilter" aria-label="Filter by area" hidden></select>
+    </div>
+    <div class="chips" id="flvFilter" aria-label="Filter by product"></div>
+  </div>
+
+  <div class="signin" id="signin" hidden>
+    <strong>Sign in to start</strong>
+    <p>Use your Google account to sign in. Then pick a username and a bag for your profile picture.</p>
+    <button class="btn" id="googleBtn" type="button">Sign in with Google</button>
+  </div>
+  <div class="summary" id="summary"></div>
+  <div class="notice" id="notice" hidden></div>
+  <div class="list" id="list">
+    <div class="empty"><strong>Loading reports…</strong>Checking shelves for Joyride.</div>
+  </div>
+</div>
+
+<button class="btn fab" id="fab" type="button">+ Report a sighting</button>
+
+<div class="scrim" id="scrim" hidden>
+  <form class="sheet" id="form" lang="en" novalidate>
+    <h2>I found Joyride!</h2>
+    <label class="field"><span>1. State</span><select id="f-state"></select></label>
+    <label class="field" id="w-region" hidden><span>2. Area</span><select id="f-region"></select></label>
+    <label class="field" id="w-city" hidden><span><b class="n"></b>City</span><select id="f-city"></select></label>
+    <div class="field" id="w-store" hidden>
+      <span><b class="n"></b>Store</span>
+      <select id="f-chain" aria-label="Filter stores by chain"></select>
+      <div class="pick" id="f-store" role="radiogroup" aria-label="Store"></div>
+    </div>
+    <div class="field">
+      <span>How much is on the shelf?</span>
+      <div class="lvl" role="radiogroup">
+        <label><input type="radio" name="lvl" id="l-out" value="out"><div class="meter" data-l="out"><div class="bars"><i></i><i></i><i></i><i></i><i></i></div></div>Sold out</label>
+        <label><input type="radio" name="lvl" id="l-low" value="low"><div class="meter" data-l="low"><div class="bars"><i></i><i></i><i></i><i></i><i></i></div></div>1 or 2 left</label>
+        <label><input type="radio" name="lvl" id="l-few" value="few"><div class="meter" data-l="few"><div class="bars"><i></i><i></i><i></i><i></i><i></i></div></div>A little</label>
+        <label><input type="radio" name="lvl" id="l-some" value="some"><div class="meter" data-l="some"><div class="bars"><i></i><i></i><i></i><i></i><i></i></div></div>Some</label>
+        <label><input type="radio" name="lvl" id="l-lots" value="lots"><div class="meter" data-l="lots"><div class="bars"><i></i><i></i><i></i><i></i><i></i></div></div>A lot</label>
+        <label><input type="radio" name="lvl" id="l-full" value="full"><div class="meter" data-l="full"><div class="bars"><i></i><i></i><i></i><i></i><i></i></div></div>Fully stocked</label>
+      </div>
+    </div>
+    <div class="field">
+      <span>Which kinds did you see?</span>
+      <div class="chips" id="f-flv"></div>
+    </div>
+    <p class="err" id="f-err" hidden></p>
+    <div class="actions">
+      <button class="btn" id="f-send" type="submit">Submit report</button>
+      <button class="btn ghost" id="f-cancel" type="button">Cancel</button>
+    </div>
+  </form>
+</div>
+<div class="scrim" id="pscrim" hidden>
+  <form class="sheet" id="pform" lang="en" novalidate>
+    <h2 id="pTitle">Create your account</h2>
+    <div class="preview"><span class="avatar" id="pAvatar"></span><div><b id="pName">Your name</b><small id="pStats">Pick a name and a bag</small></div></div>
+    <label class="field" id="w-name"><span>Username</span><input id="p-name" maxlength="20" autocomplete="nickname" placeholder="e.g. SourStripFan"><small class="hint">3–20 letters, numbers or _. Keep it friendly: rude names are blocked. You can't change it later.</small></label>
+    <div class="acctbar" id="acctbar">
+      <button class="btn ghost" id="p-new" type="button">+ Create another account</button>
+      <button class="btn ghost" id="p-switch" type="button">Switch account</button>
+    </div>
+    <div class="field" id="w-switch" hidden><span>Your accounts</span><div class="ulist" id="pAccts"></div></div>
+    <div class="field" id="w-bags">
+      <span id="bagLabel">Profile picture: pick your bag</span>
+      <div class="bags" id="pBags" role="radiogroup" aria-label="Profile picture"></div>
+    </div>
+    <p class="uid" id="p-uid"></p>
+    <p class="err" id="p-err" hidden></p>
+    <div class="actions">
+      <button class="btn" id="p-save" type="submit">Create account</button>
+      <button class="btn ghost" id="p-cancel" type="button">Close</button>
+      <button class="btn ghost" id="p-signout" type="button">Sign out</button>
+    </div>
+  </form>
+</div>
+<div class="scrim" id="ascrim" hidden>
+  <div class="sheet" lang="en" role="dialog" aria-labelledby="aTitle">
+    <h2 id="aTitle">Admin</h2>
+    <div class="tiles" id="aTiles"></div>
+    <h3 class="ah">Visits</h3>
+    <div class="ustats" id="vStats"></div>
+    <div class="ulist" id="vList"></div>
+    <h3 class="ah">Everyone who signed up</h3>
+    <div class="ustats" id="aStats"></div>
+    <div class="ulist" id="aList"></div>
+    <div class="actions"><button class="btn ghost" id="a-close" type="button">Close</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  const FLAVORS = ["Sour Strawberry Strips", "Sour Blue Raspberry Strips", "Sour Pink Lemonade Strips", "Sour Green Apple Strips", "Sour Rainbow Strips", "Sour Fun Drink Strips", "Sour Strawberry Ropes", "Cherry Berry Ropes", "Classic Strawberry Twists", "Sour Watermelon Wedges", "Sour Worms", "Sour Peach Rings", "Sour Strawberry Gummies", "Sour Smacks", "Frosted Gummy Bears", "Gummy Busters"];
+  const STATES = { AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",DC:"District of Columbia",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming",PR:"Puerto Rico" };
+  const LVL = { out: "Sold out", low: "1 or 2 left", few: "A little", some: "Some", lots: "A lot", full: "Fully stocked" };
+  const STALE_MS = 7 * 24 * 3600 * 1000;
+  const $ = (id) => document.getElementById(id);
+  const BAGS = [["sour-strawberry-strips","Sour Strawberry Strips"],["sour-blue-raspberry-strips","Sour Blue Raspberry Strips"],["sour-pink-lemonade-strips","Sour Pink Lemonade Strips"],["sour-green-apple-strips","Sour Green Apple Strips"],["sour-fun-drink-strips","Sour Fun Drink Strips"],["sour-strawberry-ropes","Sour Strawberry Ropes"],["cherry-berry-ropes","Cherry Berry Ropes"],["classic-strawberry-twists","Classic Strawberry Twists"],["sour-watermelon-wedges","Sour Watermelon Wedges"],["sour-worms","Sour Worms"],["sour-peach-rings","Sour Peach Rings"],["sour-strawberry-gummies","Sour Strawberry Gummies"],["sour-smacks","Sour Smacks"],["frosted-gummy-bears","Frosted Gummy Bears"]];
+  const BAG_IDS = new Set(BAGS.map(b => b[0]));
+  const BAG_COLOR = {"sour-strawberry-strips":"#ff5fa2","sour-blue-raspberry-strips":"#2fa6e8","sour-pink-lemonade-strips":"#f5d62a","sour-green-apple-strips":"#7cc81f","sour-fun-drink-strips":"#ff8a1c","sour-strawberry-ropes":"#f0579a","cherry-berry-ropes":"#e43a5c","classic-strawberry-twists":"#ef4c5a","sour-watermelon-wedges":"#2ea44f","sour-worms":"#7a3fd0","sour-peach-rings":"#ff8c5a","sour-strawberry-gummies":"#ee4f9b","sour-smacks":"#d9e021","frosted-gummy-bears":"#e8326b"};
+  // Usernames: blocked words (checked after undoing look-alike characters)
+  const BAD_ANY = ["fuck","fuk","shit","bitch","cunt","dick","cock","pussy","asshole","bastard","slut","whore","nigg","nigga","faggot","retard","penis","vagina","porn","nazi","hitler","rape","boob","tits","twat","wank","douche","motherf","jackass","dumbass","kys","killyour","suck","poop","butt","horny","nude","naked","sexy"];
+  const BAD_WORD = ["ass","sex","cum","hoe","fag","tit","dumb","ugly","hate","kill","crap","damn","piss","idiot","stupid","loser","die","gay","fat"];
+  function nameProblem(n) {
+    if (!/^[A-Za-z0-9_ ]{3,20}$/.test(n)) return "Use 3–20 letters, numbers, spaces or _.";
+    const flat = n.toLowerCase().replace(/[0@4]/g, m => ({ "0": "o", "@": "a", "4": "a" }[m])).replace(/1/g, "i").replace(/3/g, "e").replace(/5/g, "s").replace(/7/g, "t");
+    const squashed = flat.replace(/[^a-z]/g, "");
+    const words = flat.split(/[^a-z]+/).filter(Boolean);
+    if (BAD_ANY.some(w => squashed.includes(w)) || words.some(w => BAD_WORD.includes(w))) return "That name isn't allowed. Please pick a friendly name.";
+    const flatName = n.toLowerCase().replace(/[^a-z]/g, "");
+    if (!isOwner && (flatName === "omertheowner" || /owner|admin|moderator/.test(flatName))) return "That name is reserved. Please pick another one.";
+    const taken = allAccounts().some(a => a.name.toLowerCase() === n.toLowerCase());
+    if (taken) return "That username is taken. Try another one.";
+    return "";
+  }
+  let userApi = null, profiles = {}, names = {}, myName = "";
+  let confirming = null, reports = [], db = null, me = null, canWrite = true, flvSel = new Set();
+  const storeCache = {}; // state -> rows [id, chain, branch, street, city, region]
+
+  function norm(s) { return String(s || "").trim().replace(/\s+/g, " ").toLowerCase(); }
+  function ago(t) {
+    const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (m < 1) return "just now";
+    if (m < 60) return m + " min ago";
+    const h = Math.round(m / 60); if (h < 24) return h + (h === 1 ? " hour ago" : " hours ago");
+    const d = Math.round(h / 24); return d === 1 ? "yesterday" : d + " days ago";
+  }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function meter(l) {
+    const m = el("div", "meter"); m.dataset.l = l || "none";
+    const b = el("div", "bars"); b.append(el("i"), el("i"), el("i"), el("i"), el("i")); m.append(b, el("small", null, LVL[l] || "?")); return m;
+  }
+  function stat(n, label) { const s = el("span"); s.append(el("b", null, String(n)), document.createTextNode(" " + label)); return s; }
+  function fill(sel, ph, items, val) { sel.replaceChildren(new Option(ph, ""), ...items.map(i => Array.isArray(i) ? new Option(i[1], i[0]) : new Option(i, i))); sel.value = items.some(i => (Array.isArray(i) ? i[0] : i) === val) ? val : ""; }
+  const uniq = (a) => [...new Set(a)];
+
+  // ---- store directory (one file per state) ----
+  let stateIndex = {};
+  async function loadIndex() {
+    try { stateIndex = await (await fetch("stores/index.json")).json(); } catch (_) { stateIndex = {}; }
+    const keys = Object.keys(stateIndex).filter(k => STATES[k]).sort((a, b) => STATES[a].localeCompare(STATES[b]));
+    fill($("f-state"), "Choose a state", keys.map(k => [k, STATES[k]]), $("f-state").value);
+  }
+  async function storesOf(st) {
+    if (!storeCache[st]) storeCache[st] = fetch("stores/" + st + ".json").then(r => r.json()).catch(() => { delete storeCache[st]; return []; });
+    return storeCache[st];
+  }
+
+  // ---- reports, grouped by store ----
+  function stores() {
+    const map = new Map();
+    for (const r of reports) {
+      const k = r.storeId || [r.store, r.city, r.state].map(norm).join("|");
+      if (!map.has(k)) map.set(k, { key: k, ids: [], chain: r.chain || r.store, branch: r.branch || "", street: r.street || "", city: r.city, state: r.state || "", region: r.region || "", latest: r, count: 0, flavors: new Set() });
+      const s = map.get(k); s.count++; s.ids.push(r.id); (s.all = s.all || []).push(r);
+      if (s.latest.at - r.at < STALE_MS) (r.flavors || []).forEach(f => s.flavors.add(f));
+    }
+    return [...map.values()];
+  }
+
+  function renderFilters() {
+    const used = uniq(reports.map(r => r.state).filter(s => STATES[s])).sort();
+    const sel = $("stateFilter"), cur = sel.value;
+    fill(sel, "All states", used.map(s => [s, STATES[s]]), cur);
+    const regs = sel.value ? uniq(reports.filter(r => r.state === sel.value).map(r => r.region).filter(Boolean)).sort() : [];
+    const rs = $("regionFilter");
+    rs.hidden = regs.length < 2;
+    fill(rs, "All areas", regs, rs.value);
+    const all = new Set(FLAVORS); reports.forEach(r => (r.flavors || []).forEach(f => all.add(f)));
+    const box = $("flvFilter"); box.replaceChildren();
+    for (const f of all) {
+      const c = el("button", "chip", f); c.type = "button"; c.setAttribute("aria-pressed", flvSel.has(f));
+      c.onclick = () => { flvSel.has(f) ? flvSel.delete(f) : flvSel.add(f); renderFilters(); renderList(); };
+      box.append(c);
+    }
+  }
+
+  function renderList() {
+    const q = norm($("q").value), st = $("stateFilter").value, rg = $("regionFilter").hidden ? "" : $("regionFilter").value;
+    const all = stores();
+    const list = all.filter(s =>
+      (!st || s.state === st) && (!rg || s.region === rg) &&
+      (!q || norm([s.chain, s.branch, s.street, s.city, s.region, s.state, STATES[s.state]].join(" ")).includes(q)) &&
+      [...flvSel].every(f => s.flavors.has(f)))
+      .sort((a, b) => b.latest.at - a.latest.at);
+    const good = all.filter(s => Date.now() - s.latest.at < STALE_MS && ["some", "lots", "full"].includes(s.latest.level)).length;
+    const nStates = new Set(all.map(s => s.state).filter(Boolean)).size;
+    $("summary").replaceChildren(stat(all.length, all.length === 1 ? "store" : "stores"), stat(nStates, nStates === 1 ? "state" : "states"), stat(good, "well stocked this week"), stat(reports.length, reports.length === 1 ? "report" : "reports"));
+    const box = $("list"); box.replaceChildren();
+    if (!list.length) {
+      const e = el("div", "empty");
+      e.append(el("strong", null, reports.length ? "No stores match" : "No sightings yet"),
+        document.createTextNode(reports.length ? "Try a different search or filter." : "Seen Joyride in a store? Tap “Report a sighting” and be the first."));
+      box.append(e); return;
+    }
+    for (const s of list) {
+      const r = s.latest, c = el("article", "card" + (Date.now() - r.at > STALE_MS ? " stale" : ""));
+      const h = el("h3", null, s.chain); if (s.branch) h.append(" ", el("small", null, s.branch));
+      const where = [s.street, s.city].filter(Boolean).join(", ") + " · " + [s.region, STATES[s.state] || s.state].filter(Boolean).join(", ");
+      c.append(h, meter(r.level), el("div", "where", where));
+      if (s.flavors.size) { const f = el("div", "flv"); s.flavors.forEach(x => f.append(el("span", null, x))); c.append(f); }
+      const foot = el("div", "foot");
+      const by = el("span", "by");
+      if (r.by) by.append(avatarEl(r.by, "sm", undefined, undefined, r.acct));
+      by.append(document.createTextNode((r.by ? (displayName(r.by, r.acct) || "Someone") + (r.by === ownerId ? " (owner)" : "") + " · " : "") + ago(r.at) + " · " + s.count + (s.count === 1 ? " report" : " reports")));
+      foot.append(by);
+      const acts = el("div", "acts");
+      const a = el("a", null, "Directions"); a.target = "_blank"; a.rel = "noopener";
+      a.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent([s.chain, s.street, s.city, s.state].filter(Boolean).join(", "));
+      acts.append(a);
+      if (canWrite) {
+        const u = el("button", null, "Update stock"); u.type = "button"; u.onclick = () => openForm(s);
+        acts.append(u);
+        if (myReportsIn(s).length) { const del = el("button", "del", "Delete my report"); del.type = "button"; del.onclick = () => { confirming = s.key; renderList(); }; acts.append(del); }
+      }
+      foot.append(acts); c.append(foot);
+      if (confirming === s.key) {
+        const cf = el("div", "confirm");
+        const mineN = myReportsIn(s).length;
+        cf.append(el("span", null, mineN === 1 ? "Delete your report for this store?" : "Delete your " + mineN + " reports for this store?"));
+        const yes = el("button", "btn", "Delete"); yes.type = "button"; yes.onclick = () => removeStore(s, yes);
+        const no = el("button", "btn ghost", "Cancel"); no.type = "button"; no.onclick = () => { confirming = null; renderList(); };
+        cf.append(yes, no); c.append(cf);
+      }
+      box.append(c);
+    }
+  }
+  function render() { renderFilters(); renderList(); resolveNames(); }
+
+  // ---- users & avatars ----
+  // profiles/<user id> = { accounts: [{id, name, bag, at}], active: id }  (older docs: {name, bag, at})
+  function accountsOf(uid) {
+    const p = profiles[uid]; if (!p) return [];
+    if (Array.isArray(p.accounts)) return p.accounts.filter(a => a && a.name);
+    return p.name ? [{ id: "a1", name: p.name, bag: p.bag, at: p.at }] : [];
+  }
+  function acctOf(uid, acctId) { const as = accountsOf(uid); return as.find(a => a.id === acctId) || null; }
+  function activeAcct(uid) { const as = accountsOf(uid); const p = profiles[uid] || {}; return as.find(a => a.id === p.active) || as[0] || null; }
+  function allAccounts() { const out = []; for (const uid in profiles) accountsOf(uid).forEach(a => out.push(Object.assign({ uid }, a))); return out; }
+  function displayName(uid, acctId) { const a = (acctId && acctOf(uid, acctId)) || activeAcct(uid); return (a && a.name) || (uid === me ? myName : names[uid]) || ""; }
+  function avatarEl(uid, size, bagOverride, nameOverride, acctId) {
+    const a = el("span", "avatar" + (size ? " " + size : ""));
+    const acc = (acctId && acctOf(uid, acctId)) || activeAcct(uid);
+    const bag = bagOverride !== undefined ? bagOverride : (acc && acc.bag);
+    if (bag && BAG_IDS.has(bag)) { const im = el("img"); im.src = "bags/" + bag + ".png"; im.alt = ""; a.append(im); a.style.background = BAG_COLOR[bag] || ""; }
+    else a.textContent = ((nameOverride !== undefined ? nameOverride : displayName(uid, acctId)) || "?").trim().charAt(0).toUpperCase() || "?";
+    return a;
+  }
+  let pending = false;
+  async function resolveNames() {
+    if (!userApi || pending) return;
+    const ids = uniq(reports.map(r => r.by).filter(id => id && !(id in names) && !accountsOf(id).length));
+    if (!ids.length) return;
+    pending = true;
+    try { const ps = await userApi.profiles(ids); ids.forEach(id => { names[id] = (ps[id] && ps[id].name) || ""; }); renderList(); } catch (_) {}
+    pending = false;
+  }
+  let isOwner = false, ownerId = null;
+  const hasAccount = () => !!(me && accountsOf(me).length);
+  async function saveMine(accounts, active) {
+    await db.collection("profiles").doc(me).set({ accounts, active, at: Date.now() });
+  }
+  let visits = {};
+  function renderVisits() {
+    const docs = Object.entries(visits);
+    const total = docs.reduce((n, [, v]) => n + (v.count || 0), 0);
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const recent = [];
+    docs.forEach(([uid, v]) => (v.recent || []).forEach(e => recent.push({ uid, at: e.at, acct: e.acct })));
+    recent.sort((a, b) => b.at - a.at);
+    const today = recent.filter(e => e.at >= t0.getTime()).length;
+    const accts = allAccounts(), dayAgo = Date.now() - 864e5;
+    const newDay = accts.filter(a => (a.at || 0) >= dayAgo).length;
+    const since = docs.reduce((m, [, v]) => v.first && v.first < m ? v.first : m, Infinity);
+    const tile = (n, label, sub) => { const t = el("div", "tile"); t.append(el("b", null, String(n)), el("span", null, label)); if (sub) t.append(el("small", null, sub)); return t; };
+    $("aTiles").replaceChildren(
+      tile(total, "Visits all time", since < Infinity ? "since " + new Date(since).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : ""),
+      tile(accts.length, "Users in total", new Set(accts.map(a => a.uid)).size + " people"),
+      tile(newDay, "New users", "last 24 hours"));
+    $("vStats").replaceChildren(stat(total, total === 1 ? "visit in total" : "visits in total"), stat(docs.length, docs.length === 1 ? "person visited" : "people visited"), stat(today, "today"));
+    const list = $("vList"); list.replaceChildren();
+    if (!recent.length) list.append(el("div", "hint", "No visits yet."));
+    for (const e of recent.slice(0, 40)) {
+      const row = el("div", "vrow");
+      row.append(avatarEl(e.uid, "sm", undefined, undefined, e.acct), el("span", null, displayName(e.uid, e.acct) || "Someone"), el("small", null, new Date(e.at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })));
+      list.append(row);
+    }
+  }
+  function renderAdmin() {
+    renderVisits();
+    const list = $("aList"); list.replaceChildren();
+    const accts = allAccounts().sort((a, b) => (b.at || 0) - (a.at || 0));
+    const counts = {}; reports.forEach(r => { if (r.by) { const k = r.by + "/" + (r.acct || (activeAcct(r.by) || {}).id); counts[k] = (counts[k] || 0) + 1; } });
+    const people = new Set(accts.map(a => a.uid)).size;
+    $("aStats").replaceChildren(stat(accts.length, accts.length === 1 ? "account" : "accounts"), stat(people, people === 1 ? "person" : "people"), stat(reports.length, "reports"));
+    if (!accts.length) list.append(el("div", "empty", "No one has signed up yet."));
+    for (const a of accts) {
+      const row = el("div", "urow"), info = el("div"), b = el("b", null, a.name);
+      if (a.uid === ownerId || (isOwner && a.uid === me)) b.append(el("span", "badge", "Owner"));
+      const n = counts[a.uid + "/" + a.id] || 0, sibs = accountsOf(a.uid).length;
+      info.append(b, el("small", null, n + (n === 1 ? " report" : " reports") + (a.at ? " · joined " + new Date(a.at).toLocaleDateString() : "") + (sibs > 1 ? " · 1 of " + sibs + " accounts by the same person" : "")));
+      row.append(avatarEl(a.uid, "", a.bag, a.name), info);
+      if (a.uid !== me) {
+        const del = el("button", null, "Remove"); del.type = "button";
+        del.onclick = async () => {
+          if (del.dataset.sure !== "1") { del.dataset.sure = "1"; del.textContent = "Sure?"; return; }
+          try {
+            const rest = accountsOf(a.uid).filter(x => x.id !== a.id), p = profiles[a.uid] || {};
+            if (rest.length) await db.collection("profiles").doc(a.uid).set({ accounts: rest, active: rest.some(x => x.id === p.active) ? p.active : rest[0].id, at: Date.now() });
+            else await db.collection("profiles").doc(a.uid).delete();
+            toast("Removed " + a.name);
+          } catch (_) { toast("Couldn't remove. Try again."); }
+        };
+        row.append(del);
+      } else row.append(el("span"));
+      list.append(row);
+    }
+  }
+  $("adminbtn").onclick = () => { renderAdmin(); $("ascrim").hidden = false; };
+  $("a-close").onclick = () => { $("ascrim").hidden = true; };
+  $("ascrim").addEventListener("click", e => { if (e.target === $("ascrim")) $("ascrim").hidden = true; });
+  function renderMe() {
+    const isAdmin = isOwner && ((activeAcct(me) || {}).name || "").toLowerCase() === "omertheowner";
+    $("adminbtn").hidden = !isAdmin;
+    if (!isAdmin) $("ascrim").hidden = true;
+    else if (!$("ascrim").hidden) renderAdmin();
+    const bagNow = (activeAcct(me) || {}).bag, root = document.documentElement;
+    if (bagNow && BAG_COLOR[bagNow]) {
+      const hex = BAG_COLOR[bagNow], n = parseInt(hex.slice(1), 16);
+      const lum = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) * 0.82 / 255;
+      root.style.setProperty("--bag", hex); root.style.setProperty("--bag-ink", lum > 0.6 ? "#23143a" : "#ffffff");
+      root.classList.add("has-bag");
+    } else root.classList.remove("has-bag");
+    const b = $("mebtn"); b.hidden = !me;
+    if (!me) return;
+    $("meAvatar").replaceWith(Object.assign(avatarEl(me, "lg"), { id: "meAvatar" }));
+    const a = activeAcct(me);
+    b.lastElementChild.textContent = a ? a.name : "Sign up";
+  }
+
+  // profile sheet modes: "create" (new account), "edit" (current account), "switch" (pick one of yours)
+  let pickBag = null, mode = "create", pickAcct = null;
+  function updatePreview() {
+    const a = activeAcct(me);
+    const n = mode === "create" ? $("p-name").value.trim() : (mode === "switch" ? (acctOf(me, pickAcct) || a || {}).name : (a || {}).name) || "";
+    const bag = mode === "switch" ? (acctOf(me, pickAcct) || {}).bag : pickBag;
+    $("pAvatar").replaceWith(Object.assign(avatarEl(me, "", bag || null, n || "?"), { id: "pAvatar" }));
+    $("pName").textContent = n || "Your name";
+  }
+  function buildBags() {
+    const box = $("pBags"); box.replaceChildren();
+    for (const [id, label] of BAGS) {
+      const lab = el("label"), inp = el("input"), disc = el("span", "disc"), im = el("img");
+      lab.style.setProperty("--c", BAG_COLOR[id]);
+      inp.type = "radio"; inp.name = "bag"; inp.value = id; inp.checked = id === pickBag;
+      inp.onchange = () => { pickBag = id; updatePreview(); };
+      im.src = "bags/" + id + ".png"; im.alt = ""; im.loading = "lazy";
+      disc.append(im); lab.append(inp, disc, document.createTextNode(label)); box.append(lab);
+    }
+  }
+  function buildSwitch() {
+    const box = $("pAccts"); box.replaceChildren();
+    for (const a of accountsOf(me)) {
+      const row = el("div", "urow choose" + (a.id === pickAcct ? " on" : "")), info = el("div");
+      row.tabIndex = 0; row.setAttribute("role", "radio"); row.setAttribute("aria-checked", a.id === pickAcct);
+      const n = reports.filter(r => r.by === me && (r.acct || "a1") === a.id).length;
+      info.append(el("b", null, a.name), el("small", null, n + (n === 1 ? " report" : " reports")));
+      row.append(avatarEl(me, "", a.bag, a.name), info, el("span", "tag", a.id === (activeAcct(me) || {}).id ? "Signed in" : ""));
+      const choose = () => { pickAcct = a.id; buildSwitch(); updatePreview(); };
+      row.onclick = choose; row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(); } };
+      box.append(row);
+    }
+  }
+  function setMode(m) {
+    mode = m;
+    const acct = hasAccount(), a = activeAcct(me);
+    $("pTitle").textContent = m === "create" ? (acct ? "Create another account" : "Create your account") : m === "switch" ? "Switch account" : "Your profile";
+    $("p-save").textContent = m === "create" ? "Create account" : m === "switch" ? "Sign in" : "Save";
+    $("w-name").hidden = m !== "create";
+    $("w-bags").hidden = m === "switch";
+    $("w-switch").hidden = m !== "switch";
+    $("acctbar").hidden = m !== "edit";
+    $("p-switch").hidden = accountsOf(me).length < 2;
+    $("bagLabel").textContent = m === "edit" ? "Change your picture" : "Profile picture: pick your bag";
+    if (m === "create") { $("p-name").value = ""; pickBag = null; $("pStats").textContent = "Pick a name and a bag"; }
+    if (m === "edit") { pickBag = (a && a.bag) || null; const n = reports.filter(r => r.by === me && (r.acct || "a1") === (a || {}).id).length; $("pStats").textContent = n + (n === 1 ? " report" : " reports") + " · username can't be changed"; }
+    if (m === "switch") { pickAcct = (a || {}).id; $("pStats").textContent = "Pick the account to use"; buildSwitch(); }
+    if (m !== "switch") buildBags();
+    $("p-err").hidden = true; updatePreview();
+    if (m === "create") setTimeout(() => $("p-name").focus(), 50);
+  }
+  let profilesLoaded = false, visitLogged = false, gated = false;
+  function applyGate() {
+    const need = !db || !profilesLoaded || !hasAccount();
+    gated = need;
+    document.body.classList.toggle("gated", need);
+    $("p-cancel").hidden = need;
+    if (db && profilesLoaded && !hasAccount()) {
+      notice("Create a free account to see where Joyride is and to add reports.");
+      if ($("pscrim").hidden || mode !== "create") { setMode("create"); $("pscrim").hidden = false; }
+    } else if (db && hasAccount()) { if ($("notice").textContent.startsWith("Create a free account")) notice(""); }
+    if (db && hasAccount() && !visitLogged) logVisit();
+  }
+  async function logVisit() {
+    visitLogged = true;
+    try {
+      const ref = db.collection("visits").doc(me), snap = await ref.get();
+      const v = (snap.exists && snap.data()) || {};
+      const now = Date.now(), recent = [{ at: now, acct: (activeAcct(me) || {}).id || "a1" }].concat(Array.isArray(v.recent) ? v.recent : []).slice(0, 30);
+      await ref.set({ count: (v.count || 0) + 1, first: v.first || now, last: now, recent });
+    } catch (_) {}
+  }
+  function openProfile() { setMode(hasAccount() ? "edit" : "create"); $("pscrim").hidden = false; }
+  $("p-new").onclick = () => setMode("create");
+  $("p-switch").onclick = () => setMode("switch");
+  $("p-name").addEventListener("input", updatePreview);
+  $("mebtn").onclick = openProfile;
+  $("p-cancel").onclick = () => { if (!gated) $("pscrim").hidden = true; };
+  $("pscrim").addEventListener("click", e => { if (e.target === $("pscrim") && !gated) $("pscrim").hidden = true; });
+  $("pform").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const err = $("p-err"), fail = (t) => { err.textContent = t; err.hidden = false; };
+    if (!db || !me) return fail("Sign in first to create an account.");
+    const accounts = accountsOf(me).map(a => Object.assign({}, a));
+    let active = (activeAcct(me) || {}).id, msg = "Saved";
+    if (mode === "create") {
+      const name = $("p-name").value.trim().replace(/\s+/g, " ");
+      const prob = nameProblem(name); if (prob) return fail(prob);
+      if (!pickBag) return fail("Pick a bag for your profile picture.");
+      if (accounts.length >= 5) return fail("You can have up to 5 accounts.");
+      let id = "a1", i = 1; while (accounts.some(a => a.id === id)) id = "a" + (++i);
+      accounts.push({ id, name, bag: pickBag, at: Date.now() }); active = id; msg = "Welcome, " + name + "!";
+    } else if (mode === "edit") {
+      if (!pickBag) return fail("Pick a bag for your profile picture.");
+      const a = accounts.find(x => x.id === active); if (a) a.bag = pickBag; msg = "Picture saved";
+    } else {
+      if (!pickAcct) return fail("Pick an account.");
+      active = pickAcct; msg = "Signed in as " + (acctOf(me, pickAcct) || {}).name;
+    }
+    $("p-save").disabled = true;
+    try { await saveMine(accounts, active); $("pscrim").hidden = true; toast(msg); }
+    catch (x) { fail(x && x.code === "not_granted" ? "You don't have permission to save a profile here." : "Couldn't save. Try again."); }
+    finally { $("p-save").disabled = false; }
+  });
+  // reports/<user id> = { items: [report, ...] }: only that person can change their own doc
+  const myAcctId = () => (activeAcct(me) || {}).id || "a1";
+  function myReportsIn(s) { return me ? (s.all || []).filter(r => r.by === me && (r.acct || "a1") === myAcctId()) : []; }
+  function myItems() { return reports.filter(r => r.by === me).map(r => { const o = Object.assign({}, r); delete o.by; return o; }); }
+  async function saveMyItems(items) {
+    items.sort((a, b) => b.at - a.at);
+    await db.collection("reports").doc(me).set({ items: items.slice(0, 300) });
+  }
+  async function removeStore(s, btn) {
+    if (!db || !me) return toast("Can't reach the report database");
+    btn.disabled = true;
+    try {
+      const drop = new Set(myReportsIn(s).map(r => r.id));
+      await saveMyItems(myItems().filter(r => !drop.has(r.id)));
+      confirming = null; toast("Report deleted");
+    } catch (x) {
+      btn.disabled = false;
+      toast(x && x.code === "not_granted" ? "You don't have permission to delete" : "Couldn't delete. Try again.");
+    }
+  }
+
+  // ---- report form: state -> area -> city -> store ----
+  let formRows = [], picked = null;
+  async function syncForm(pre) {
+    pre = pre || {};
+    const st = $("f-state").value;
+    const rows = st ? await storesOf(st) : [];
+    if (st !== $("f-state").value) return; // changed while loading
+    formRows = rows;
+    const regs = uniq(rows.map(r => r[5]).filter(Boolean)).sort();
+    const hasReg = regs.length > 1;
+    $("w-region").hidden = !st || !hasReg;
+    if (hasReg) fill($("f-region"), "Choose an area", regs, pre.region !== undefined ? pre.region : $("f-region").value);
+    const rg = hasReg ? $("f-region").value : "";
+    const showCity = !!st && (!hasReg || !!rg);
+    $("w-city").hidden = !showCity;
+    const inArea = rows.filter(r => !hasReg || r[5] === rg);
+    const cities = uniq(inArea.map(r => r[4])).sort();
+    if (showCity) fill($("f-city"), "Choose a city (" + cities.length + ")", cities, pre.city !== undefined ? pre.city : $("f-city").value);
+    const city = $("f-city").value, showStore = showCity && !!city;
+    $("w-store").hidden = !showStore;
+    const n = hasReg ? 3 : 2;
+    $("w-city").querySelector(".n").textContent = n + ". ";
+    $("w-store").querySelector(".n").textContent = (n + 1) + ". ";
+    if (!showStore) { picked = null; return; }
+    const inCity = inArea.filter(r => r[4] === city);
+    const chains = uniq(inCity.map(r => r[1])).sort();
+    const ch = $("f-chain");
+    ch.hidden = chains.length < 2;
+    fill(ch, "All chains (" + inCity.length + " stores)", chains, pre.chain !== undefined ? pre.chain : ch.value);
+    if (pre.storeId) picked = pre.storeId;
+    renderPick(inCity.filter(r => !ch.value || r[1] === ch.value));
+  }
+  function renderPick(rows) {
+    const box = $("f-store"); box.replaceChildren();
+    if (!rows.length) { box.append(el("div", "none", "No Joyride stores listed here.")); return; }
+    for (const r of rows) {
+      const lab = el("label"), inp = el("input");
+      inp.type = "radio"; inp.name = "store"; inp.value = r[0]; inp.checked = r[0] === picked;
+      inp.onchange = () => { picked = r[0]; };
+      const b = el("b", null, r[1]); if (r[2]) b.append(" ", el("span", null, r[2]));
+      lab.append(inp, b, el("small", null, r[3] + ", " + r[4]));
+      box.append(lab);
+    }
+  }
+  $("f-state").addEventListener("change", () => { picked = null; $("f-region").value = ""; $("f-city").value = ""; $("f-chain").value = ""; syncForm(); });
+  $("f-region").addEventListener("change", () => { picked = null; $("f-city").value = ""; $("f-chain").value = ""; syncForm(); });
+  $("f-city").addEventListener("change", () => { picked = null; $("f-chain").value = ""; syncForm(); });
+  $("f-chain").addEventListener("change", () => syncForm());
+
+  function buildFlvPicker() {
+    const box = $("f-flv"); box.replaceChildren();
+    for (const f of FLAVORS) {
+      const c = el("button", "chip", f); c.type = "button"; c.setAttribute("aria-pressed", "false");
+      c.onclick = () => c.setAttribute("aria-pressed", c.getAttribute("aria-pressed") !== "true");
+      box.append(c);
+    }
+  }
+  function openForm(s) {
+    if (!canWrite) { toast("Sign in with access to this page to report"); return; }
+    if (me && db && !hasAccount()) { toast("Create an account to report"); openProfile(); return; }
+    $("form").reset(); $("f-err").hidden = true; picked = null;
+    buildFlvPicker();
+    if (s && s.latest && s.latest.storeId) {
+      $("f-state").value = s.state;
+      syncForm({ region: s.region, city: s.city, chain: "", storeId: s.latest.storeId });
+    } else {
+      $("f-state").value = $("stateFilter").value && stateIndex[$("stateFilter").value] ? $("stateFilter").value : "";
+      syncForm({ region: $("regionFilter").hidden ? "" : $("regionFilter").value, city: "", chain: "" });
+    }
+    $("scrim").hidden = false; setTimeout(() => (s ? $("l-out") : $("f-state")).focus(), 50);
+  }
+  function closeForm() { $("scrim").hidden = true; }
+  $("fab").onclick = () => openForm(null);
+  $("f-cancel").onclick = closeForm;
+  $("scrim").addEventListener("click", e => { if (e.target === $("scrim")) closeForm(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("scrim").hidden) closeForm(); if (!gated) $("pscrim").hidden = true; } });
+
+  $("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const err = $("f-err");
+    const fail = (t) => { err.textContent = t; err.hidden = false; };
+    const row = formRows.find(r => r[0] === picked);
+    if (!row) return fail("Choose the state, " + ($("w-region").hidden ? "" : "area, ") + "city and store.");
+    const lvl = (document.querySelector('input[name="lvl"]:checked') || {}).value;
+    if (!lvl) return fail("Pick how much is on the shelf.");
+    const flavors = [...$("f-flv").querySelectorAll('[aria-pressed="true"]')].map(b => b.textContent);
+    const doc = { storeId: row[0], chain: row[1], branch: row[2], street: row[3], city: row[4], region: row[5], state: $("f-state").value, level: lvl, flavors, at: Date.now() };
+    if (me) { doc.by = me; const a = activeAcct(me); if (a) doc.acct = a.id; }
+    if (!db) return fail("Can't reach the report database. Reload the page and try again.");
+    $("f-send").disabled = true;
+    try {
+      if (!me) throw { code: "not_granted" };
+      doc.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6); delete doc.by;
+      await saveMyItems([doc].concat(myItems()));
+      closeForm(); toast("Report saved. Thanks!");
+    } catch (x) {
+      fail(x && x.code === "not_granted" ? "You don't have permission to report on this page." : "Couldn't save your report. Check your connection and try again.");
+    } finally { $("f-send").disabled = false; }
+  });
+
+  let tt; function toast(t) { const e = $("toast"); e.textContent = t; e.hidden = false; clearTimeout(tt); tt = setTimeout(() => (e.hidden = true), 2600); }
+  $("q").addEventListener("input", renderList);
+  $("stateFilter").addEventListener("change", () => { $("regionFilter").value = ""; renderFilters(); renderList(); });
+  $("regionFilter").addEventListener("change", renderList);
+  function notice(t) { const n = $("notice"); n.textContent = t; n.hidden = !t; }
+
+  // ---- data (Firebase) ----
+  loadIndex();
+  document.body.classList.add("gated"); gated = true;
+  const cfg = window.FIREBASE_CONFIG || {};
+  $("p-signout").onclick = () => { if (window.firebase && firebase.apps.length) firebase.auth().signOut().then(() => location.reload()); };
+  $("googleBtn").onclick = () => {
+    const prov = new firebase.auth.GoogleAuthProvider();
+    firebase.auth().signInWithPopup(prov).catch(e => {
+      if (e && (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment")) firebase.auth().signInWithRedirect(prov);
+      else toast("Sign-in didn't finish. Try again.");
+    });
+  };
+  if (!cfg.apiKey || !window.firebase) {
+    notice("This site isn't connected to its database yet. The owner needs to finish the Firebase setup.");
+    render();
+  } else {
+    firebase.initializeApp(cfg);
+    const fdb = firebase.firestore();
+    ownerId = cfg.adminUid || null;
+    const unsubs = [];
+    firebase.auth().onAuthStateChanged(u => {
+      unsubs.splice(0).forEach(f => f());
+      if (!u) {
+        me = null; db = null; profilesLoaded = false; visitLogged = false; reports = []; profiles = {};
+        $("signin").hidden = false; $("pscrim").hidden = true; notice(""); render(); renderMe();
+        return;
+      }
+      $("signin").hidden = true;
+      me = u.uid; myName = u.displayName || ""; isOwner = !!cfg.adminUid && u.uid === cfg.adminUid; db = fdb;
+      $("p-uid").textContent = "Your user ID: " + u.uid;
+      renderMe();
+      unsubs.push(db.collection("profiles").onSnapshot(snap => {
+        profiles = {}; snap.docs.forEach(x => { profiles[x.id] = x.data() || {}; });
+        profilesLoaded = true;
+        renderMe(); renderList(); applyGate();
+      }, () => notice("Couldn't load profiles. Reload the page.")));
+      if (isOwner) unsubs.push(db.collection("visits").onSnapshot(snap => {
+        visits = {}; snap.docs.forEach(x => { visits[x.id] = x.data() || {}; });
+        if (!$("ascrim").hidden) renderVisits();
+      }, () => {}));
+      unsubs.push(db.collection("reports").onSnapshot(snap => {
+        const all = [];
+        snap.docs.forEach(x => { const d = x.data() || {}; (Array.isArray(d.items) ? d.items : []).forEach(it => { if (it && typeof it === "object") all.push(Object.assign({}, it, { by: x.id })); }); });
+        reports = all.filter(r => r.city && typeof r.at === "number" && (r.chain || r.store) && r.id).sort((a, b) => b.at - a.at);
+        render();
+      }, () => notice("Couldn't load reports. Reload the page.")));
+    });
+  }
+  setInterval(renderList, 60000);
+})();
+</script>
+
+</body>
+</html>
