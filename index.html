@@ -190,6 +190,30 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .actions { display: flex; gap: 10px; }
 .toast { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 999px; z-index: 30; font-weight: 700; }
 @media (prefers-reduced-motion: no-preference) { .sheet { animation: up .22s ease-out; } @keyframes up { from { transform: translateY(30px); opacity: .6; } } }
+
+.playbtn { font: inherit; font-size: 12px; font-weight: 700; border: 0; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.gated .playbtn { display: none !important; }
+.game { position: fixed; inset: 0; z-index: 25; background: var(--bg); display: flex; flex-direction: column; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.ghud { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; font-weight: 800; }
+.ghud .gscore { font-family: var(--display); font-size: 28px; line-height: 1; color: var(--accent); }
+.ghud .glives { font-size: 20px; letter-spacing: 2px; min-width: 70px; }
+.ghud .btn { padding: 6px 14px; font-size: 14px; }
+.gstage { position: relative; flex: 1; min-height: 0; touch-action: none; user-select: none; -webkit-user-select: none; }
+.gstage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.gpanel { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; }
+.gcard { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 20px 18px; width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 10px 30px rgba(20, 8, 30, .12); }
+.gcard h2 { font-family: var(--display); font-weight: 400; margin: 0; font-size: 34px; line-height: 1.05; }
+.gcard h2 span { color: var(--accent); }
+.gcard p { margin: 0; color: var(--muted); font-size: 15px; }
+.gbig { font-family: var(--display); font-size: 56px; line-height: 1; color: var(--accent); text-align: center; }
+.gnew { text-align: center; font-weight: 800; color: var(--accent); }
+.glb { display: flex; flex-direction: column; gap: 6px; }
+.glb h3 { margin: 4px 0 0; font-size: 15px; }
+.glb .row { display: grid; grid-template-columns: 22px auto 1fr auto; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 12px; background: var(--bg); font-weight: 700; font-size: 14px; }
+.glb .row.mine { background: var(--accent-soft); }
+.glb .row .rk { color: var(--muted); text-align: center; }
+.glb .row .sc { font-family: var(--display); font-size: 18px; font-weight: 400; }
+.glb .none { color: var(--muted); font-size: 14px; }
 </style>
 </head>
 <body>
@@ -203,6 +227,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     <div class="me-wrap">
       <button class="mebtn" id="mebtn" type="button" aria-label="Your profile" hidden><span class="avatar lg" id="meAvatar"></span><span>You</span></button>
       <button class="adminbtn" id="adminbtn" type="button" hidden>Admin</button>
+      <button class="playbtn" id="playbtn" type="button" hidden>Play</button>
     </div>
   </div>
 
@@ -297,6 +322,20 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     <div class="ustats" id="aStats"></div>
     <div class="ulist" id="aList"></div>
     <div class="actions"><button class="btn ghost" id="a-close" type="button">Close</button></div>
+  </div>
+</div>
+<div class="game" id="game" lang="en" role="dialog" aria-label="Spock Hop" hidden>
+  <div class="ghud"><span class="glives" id="gLives"></span><span class="gscore" id="gScore" aria-live="polite">0</span><button class="btn ghost" id="gClose" type="button">Exit</button></div>
+  <div class="gstage" id="gStage">
+    <canvas id="gCanvas"></canvas>
+    <div class="gpanel" id="gPanel">
+      <div class="gcard">
+        <h2 id="gTitle">Spock <span>Hop</span></h2>
+        <div id="gBody"></div>
+        <button class="btn" id="gStart" type="button">Play</button>
+        <div class="glb" id="gBoard"></div>
+      </div>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -535,6 +574,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   function renderMe() {
     const isAdmin = isOwner && ((activeAcct(me) || {}).name || "").toLowerCase() === "omertheowner";
     $("adminbtn").hidden = !isAdmin;
+    $("playbtn").hidden = !hasAccount();
+    if (!$("game").hidden && !gameRunning) renderBoard();
     if (!isAdmin) $("ascrim").hidden = true;
     else if (!$("ascrim").hidden) renderAdmin();
     const bagNow = (activeAcct(me) || {}).bag, root = document.documentElement;
@@ -775,6 +816,168 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       fail(x && x.code === "not_granted" ? "You don't have permission to report on this page." : "Couldn't save your report. Check your connection and try again.");
     } finally { $("f-send").disabled = false; }
   });
+
+  // ---------- Spock Hop game ----------
+  // Tap to hop Spock (Ryan's dog) through the gaps between store pillars.
+  // Best score lives on each account in profiles/<uid>: accounts[i].best
+  const CHAINS = [["Walmart", "#0071ce", "#ffc220"], ["Target", "#cc0000", "#ffffff"], ["7-Eleven", "#008163", "#ee2737"], ["Kroger", "#134b97", "#ffffff"], ["Safeway", "#e21a2c", "#ffffff"], ["Sprouts", "#4a8a2b", "#ffffff"], ["Albertsons", "#0b5aa8", "#ffffff"], ["H-E-B", "#ee3124", "#ffffff"], ["Hy-Vee", "#e31837", "#ffffff"], ["REI", "#3c5a2f", "#ffffff"], ["Vons", "#d71920", "#ffffff"], ["ACME", "#e2231a", "#ffffff"], ["Tom Thumb", "#c8102e", "#ffffff"]];
+  const SPOCK = new Image(); SPOCK.src = "icons/spock.png";
+  let gameRunning = false, gRaf = 0, gState = null;
+  const cv = $("gCanvas"), ctx = cv.getContext("2d");
+  function gSize() {
+    const r = $("gStage").getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d);
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    return { w: r.width, h: r.height };
+  }
+  function renderBoard() {
+    const box = $("gBoard"); box.replaceChildren(el("h3", null, "Top scores"));
+    const all = allAccounts().filter(a => a.best > 0).sort((a, b) => b.best - a.best || (a.bestAt || 0) - (b.bestAt || 0)).slice(0, 10);
+    if (!all.length) { box.append(el("p", "none", "No scores yet. Be the first!")); return; }
+    all.forEach((a, i) => {
+      const row = el("div", "row" + (a.uid === me && a.id === myAcctId() ? " mine" : ""));
+      row.append(el("span", "rk", i < 3 ? ["🥇", "🥈", "🥉"][i] : String(i + 1)), avatarEl(a.uid, "", a.bag, a.name, a.id), el("span", null, a.name), el("span", "sc", String(a.best)));
+      box.append(row);
+    });
+  }
+  function showPanel(over) {
+    $("gPanel").hidden = false;
+    const body = $("gBody");
+    if (!over) {
+      $("gTitle").innerHTML = "Spock <span>Hop</span>";
+      body.replaceChildren(el("p", null, "Tap (or press space) to make Spock hop. Fly through the gaps between the store pillars. Every pillar you pass is a point."));
+      $("gStart").textContent = "Play";
+    } else {
+      $("gTitle").textContent = "Game over";
+      const best = (activeAcct(me) || {}).best || 0;
+      body.replaceChildren(el("div", "gbig", String(over.score)));
+      body.append(over.record ? el("p", "gnew", "New personal best!") : el("p", null, "Your best: " + Math.max(best, over.score)));
+      $("gStart").textContent = "Play again";
+    }
+    renderBoard();
+    setTimeout(() => $("gStart").focus(), 0);
+  }
+  function openGame() {
+    if (!hasAccount()) { toast("Create an account to play"); return; }
+    $("game").hidden = false; document.body.style.overflow = "hidden";
+    $("gScore").textContent = "0"; $("gLives").textContent = "";
+    const { w, h } = gSize(); gState = null; idle = newState(w, h); drawScene(idle);
+    showPanel(null);
+  }
+  let idle = null;
+  function closeGame() { gameRunning = false; cancelAnimationFrame(gRaf); $("game").hidden = true; document.body.style.overflow = ""; }
+  $("playbtn").onclick = openGame;
+  $("gClose").onclick = closeGame;
+  $("gStart").onclick = startGame;
+  function flap() { if (gameRunning && gState) { gState.vy = -gState.jump; gState.started = true; } }
+  document.addEventListener("keydown", e => {
+    if ($("game").hidden) return;
+    if (e.key === "Escape") closeGame();
+    if ((e.key === " " || e.key === "ArrowUp") && gameRunning) { e.preventDefault(); flap(); }
+  });
+  $("gStage").addEventListener("pointerdown", e => { if (gameRunning) { e.preventDefault(); flap(); } });
+  window.addEventListener("resize", () => { if (!$("game").hidden) { const s = gSize(); if (gState) { gState.w = s.w; gState.h = s.h; } } });
+
+  function newState(w, h) {
+    const u = Math.min(h / 640, w / 360, 1.4);
+    return { w, h, u, x: w * 0.28, y: h * 0.42, vy: 0, r: 24 * u, g: 1500 * u, jump: 470 * u, speed: 150 * u, gap: 175 * u, pw: 66 * u, pipes: [], next: 0, score: 0, t: 0, started: false, ground: 0 };
+  }
+  function startGame() {
+    $("gPanel").hidden = true;
+    const { w, h } = gSize();
+    gState = newState(w, h); gState.vy = -gState.jump; gState.started = true;
+    $("gScore").textContent = "0";
+    gameRunning = true; let last = performance.now();
+    cancelAnimationFrame(gRaf);
+    const step = (now) => {
+      if (!gameRunning) return;
+      const dt = Math.min(0.033, (now - last) / 1000); last = now;
+      tick(dt); if (gameRunning) drawScene(gState);
+      if (gameRunning) gRaf = requestAnimationFrame(step);
+    };
+    gRaf = requestAnimationFrame(step);
+  }
+  function addPipe(g) {
+    const floor = g.h - 30 * g.u, margin = 60 * g.u;
+    const gap = Math.max(g.gap - g.score * 2 * g.u, 130 * g.u);
+    const top = margin + Math.random() * Math.max(10, floor - margin * 2 - gap);
+    const c = CHAINS[Math.floor(Math.random() * CHAINS.length)];
+    g.pipes.push({ x: g.w + g.pw, top, gap, chain: c, passed: false });
+  }
+  function tick(dt) {
+    const g = gState; g.t += dt;
+    const spd = g.speed * (1 + Math.min(g.score, 40) * 0.012);
+    g.vy += g.g * dt; g.y += g.vy * dt; g.ground = (g.ground + spd * dt) % (40 * g.u);
+    g.next -= spd * dt; if (g.next <= 0) { addPipe(g); g.next = 230 * g.u; }
+    const floor = g.h - 30 * g.u, hr = g.r * 0.78;
+    if (g.y < g.r) { g.y = g.r; if (g.vy < 0) g.vy = 0; }
+    let dead = g.y + hr > floor;
+    for (let i = g.pipes.length - 1; i >= 0; i--) {
+      const p = g.pipes[i]; p.x -= spd * dt;
+      if (p.x + g.pw < 0) { g.pipes.splice(i, 1); continue; }
+      if (!p.passed && p.x + g.pw < g.x - hr) { p.passed = true; g.score++; $("gScore").textContent = String(g.score); }
+      const cx = Math.max(p.x, Math.min(g.x, p.x + g.pw));
+      for (const [y0, y1] of [[-1e4, p.top], [p.top + p.gap, 1e4]]) {
+        const cy = Math.max(y0, Math.min(g.y, y1));
+        if ((g.x - cx) ** 2 + (g.y - cy) ** 2 < hr * hr) dead = true;
+      }
+    }
+    if (dead) { if (navigator.vibrate) try { navigator.vibrate(80); } catch (_) {} endGame(); }
+  }
+  function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+  function drawPillar(g, p, y, h, capAtBottom) {
+    const [name, bg, fg] = p.chain, u = g.u, capH = 34 * u, x = p.x;
+    ctx.fillStyle = bg; ctx.fillRect(x + 4 * u, y, g.pw - 8 * u, h);
+    ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.fillRect(x + 10 * u, y, 6 * u, h);
+    const cy = capAtBottom ? y + h - capH : y;
+    ctx.fillStyle = bg; rr(x - 4 * u, cy, g.pw + 8 * u, capH, 8 * u); ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,.18)"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = fg; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    let fs = 15 * u; ctx.font = "400 " + fs + "px 'Lilita One', sans-serif";
+    while (ctx.measureText(name).width > g.pw + 2 * u && fs > 8) { fs -= 1; ctx.font = "400 " + fs + "px 'Lilita One', sans-serif"; }
+    ctx.fillText(name, x + g.pw / 2, cy + capH / 2 + 1);
+  }
+  function drawDog(g) {
+    ctx.save(); ctx.translate(g.x, g.y);
+    ctx.rotate(Math.max(-0.45, Math.min(1.1, g.vy / (g.jump * 1.6))));
+    const r = g.r;
+    if (SPOCK.complete && SPOCK.naturalWidth) {
+      const k = (r * 2.3) / Math.max(SPOCK.naturalWidth, SPOCK.naturalHeight);
+      ctx.drawImage(SPOCK, -SPOCK.naturalWidth * k / 2, -SPOCK.naturalHeight * k / 2, SPOCK.naturalWidth * k, SPOCK.naturalHeight * k);
+    } else {
+      ctx.fillStyle = "#6b4a2b"; ctx.beginPath(); ctx.ellipse(-r * .78, -r * .2, r * .38, r * .7, .35, 0, 7); ctx.ellipse(r * .78, -r * .2, r * .38, r * .7, -.35, 0, 7); ctx.fill();
+      ctx.fillStyle = "#c8915a"; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+      ctx.fillStyle = "#f1dcc0"; ctx.beginPath(); ctx.ellipse(0, r * .38, r * .52, r * .42, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = "#1d1220"; ctx.beginPath(); ctx.arc(-r * .36, -r * .15, r * .12, 0, 7); ctx.arc(r * .36, -r * .15, r * .12, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, r * .2, r * .17, r * .12, 0, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawScene(g) {
+    const cs = getComputedStyle(document.documentElement), u = g.u;
+    const sky = ctx.createLinearGradient(0, 0, 0, g.h); sky.addColorStop(0, "#bfe6ff"); sky.addColorStop(1, "#f3fbff");
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, g.w, g.h);
+    ctx.fillStyle = "rgba(255,255,255,.9)";
+    for (let i = 0; i < 4; i++) { const cx = ((i * 160 * u - g.t * 18 * u) % (g.w + 160 * u) + g.w + 160 * u) % (g.w + 160 * u) - 80 * u, cy = (60 + i * 47 % 140) * u; ctx.beginPath(); ctx.arc(cx, cy, 18 * u, 0, 7); ctx.arc(cx + 20 * u, cy - 8 * u, 22 * u, 0, 7); ctx.arc(cx + 42 * u, cy, 16 * u, 0, 7); ctx.fill(); }
+    g.pipes.forEach(p => { drawPillar(g, p, -10, p.top + 10, true); drawPillar(g, p, p.top + p.gap, g.h, false); });
+    const floor = g.h - 30 * u;
+    ctx.fillStyle = (cs.getPropertyValue("--accent") || "#2ea44f").trim(); ctx.fillRect(0, floor, g.w, g.h - floor);
+    ctx.fillStyle = "rgba(255,255,255,.25)";
+    for (let x = -g.ground; x < g.w; x += 40 * u) ctx.fillRect(x, floor + 8 * u, 20 * u, 6 * u);
+    drawDog(g);
+  }
+  async function endGame() {
+    gameRunning = false; cancelAnimationFrame(gRaf);
+    const score = gState.score, prev = (activeAcct(me) || {}).best || 0, record = score > prev;
+    drawScene(gState); gState = null;
+    showPanel({ score, record: record && score > 0 });
+    if (record && score > 0 && db && me) {
+      try {
+        const accounts = accountsOf(me).map(a => Object.assign({}, a)), id = myAcctId(), a = accounts.find(x => x.id === id);
+        if (a) { a.best = score; a.bestAt = Date.now(); await saveMine(accounts, (profiles[me] || {}).active || id); }
+      } catch (_) { toast("Couldn't save your score"); }
+    }
+  }
 
   let tt; function toast(t) { const e = $("toast"); e.textContent = t; e.hidden = false; clearTimeout(tt); tt = setTimeout(() => (e.hidden = true), 2600); }
   $("q").addEventListener("input", renderList);
