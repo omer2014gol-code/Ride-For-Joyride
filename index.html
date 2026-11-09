@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="build" content="20261109213508">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="Find Ryan Trahan's Joyride candy in US stores. Community reports of what's on the shelf.">
 <link rel="icon" type="image/png" href="icons/favicon.png">
@@ -1043,6 +1044,30 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     });
   }
   setInterval(renderList, 60000);
+
+  // Home screen apps keep the old page; check for a newer build when the app opens or comes back
+  (function autoUpdate() {
+    const mine = (document.querySelector('meta[name="build"]') || {}).content || "";
+    let checking = false, lastCheck = 0;
+    async function check() {
+      if (checking || Date.now() - lastCheck < 20000) return;
+      checking = true; lastCheck = Date.now();
+      try {
+        const r = await fetch("./index.html?t=" + Date.now(), { cache: "no-store" });
+        const m = /<meta name="build" content="([^"]+)">/.exec(await r.text());
+        if (m && m[1] !== mine && !gameRunning) {
+          let tried = ""; try { tried = sessionStorage.getItem("triedBuild") || ""; } catch (_) {}
+          if (tried === m[1]) return; // already reloaded for this build once; don't loop
+          try { sessionStorage.setItem("triedBuild", m[1]); } catch (_) {}
+          location.replace(location.pathname + "?v=" + encodeURIComponent(m[1]));
+        }
+      } catch (_) {} finally { checking = false; }
+    }
+    check();
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+    window.addEventListener("pageshow", e => { if (e.persisted) check(); });
+    setInterval(check, 5 * 60 * 1000);
+  })();
 })();
 </script>
 

@@ -9,3 +9,4 @@ A community tracker for Ryan Trahan's Joyride candy in US stores. Sign in, pick 
 - `bags/`: profile pictures (Joyride bag photos)
 - `firebase-config.js`: the Firebase web config and the owner's user ID
 - `firestore.rules`: database security rules to paste into the Firebase console
+- `scripts/bump-build.sh`: run before each commit so open copies of the site (home screen apps) reload to the new version
