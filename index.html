@@ -818,9 +818,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   });
 
   // ---------- Spock Hop game ----------
-  // Tap to hop Spock (Ryan's dog) through the gaps between store pillars.
+  // Tap to hop Spock (Ryan's dog) through the gaps between towers of Joyride bags.
   // Best score lives on each account in profiles/<uid>: accounts[i].best
-  const CHAINS = [["Walmart", "#0071ce", "#ffc220"], ["Target", "#cc0000", "#ffffff"], ["7-Eleven", "#008163", "#ffffff"], ["Kroger", "#134b97", "#ffffff"], ["Safeway", "#e21a2c", "#ffffff"], ["Sprouts", "#4a8a2b", "#ffffff"], ["Albertsons", "#0b5aa8", "#ffffff"], ["H-E-B", "#ee3124", "#ffffff"], ["Hy-Vee", "#e31837", "#ffffff"], ["REI", "#3c5a2f", "#ffffff"], ["Vons", "#d71920", "#ffffff"], ["ACME", "#e2231a", "#ffffff"], ["Tom Thumb", "#c8102e", "#ffffff"]];
+  // tight box (x, y, w, h) of each bag inside its 240px image, so bags stack without gaps
+  const BAG_BOX = {"cherry-berry-ropes":[43,11,153,222],"classic-strawberry-twists":[30,5,180,231],"frosted-gummy-bears":[44,10,147,214],"sour-blue-raspberry-strips":[43,11,152,221],"sour-fun-drink-strips":[47,18,144,210],"sour-green-apple-strips":[43,11,152,221],"sour-peach-rings":[46,18,145,210],"sour-pink-lemonade-strips":[43,11,152,222],"sour-smacks":[46,18,145,210],"sour-strawberry-gummies":[46,18,145,210],"sour-strawberry-ropes":[43,11,153,223],"sour-strawberry-strips":[43,11,153,224],"sour-watermelon-wedges":[43,11,153,223],"sour-worms":[44,10,147,214]};
+  const BAG_IMG = {}; function bagImg(id) { if (!BAG_IMG[id]) { const i = new Image(); i.src = "bags/" + id + ".png"; BAG_IMG[id] = i; } return BAG_IMG[id]; }
   const SPOCK = new Image(); SPOCK.src = "icons/spock.png";
   let gameRunning = false, gRaf = 0, gState = null;
   const cv = $("gCanvas"), ctx = cv.getContext("2d");
@@ -845,7 +847,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     const body = $("gBody");
     if (!over) {
       $("gTitle").innerHTML = "Spock <span>Hop</span>";
-      body.replaceChildren(el("p", null, "Tap (or press space) to make Spock hop. Fly through the gaps between the store pillars. Every pillar you pass is a point."));
+      body.replaceChildren(el("p", null, "Tap (or press space) to make Spock hop. Fly through the gaps between the towers of Joyride bags. Every pillar you pass is a point."));
       $("gStart").textContent = "Play";
     } else {
       $("gTitle").textContent = "Game over";
@@ -880,7 +882,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
   function newState(w, h) {
     const u = Math.min(h / 640, w / 360, 1.4);
-    return { w, h, u, x: w * 0.28, y: h * 0.42, vy: 0, r: 27 * u, g: 1500 * u, jump: 470 * u, speed: 150 * u, gap: 175 * u, pw: 66 * u, pipes: [], next: 0, score: 0, t: 0, started: false, ground: 0 };
+    return { w, h, u, x: w * 0.28, y: h * 0.42, vy: 0, r: 27 * u, g: 1500 * u, jump: 470 * u, speed: 150 * u, gap: 175 * u, pw: 66 * u, pipes: [], next: 0, order: BAGS.map(b => b[0]).sort(() => Math.random() - .5), bi: 0, score: 0, t: 0, started: false, ground: 0 };
   }
   function startGame() {
     $("gPanel").hidden = true;
@@ -901,8 +903,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     const floor = g.h - 30 * g.u, margin = 60 * g.u;
     const gap = Math.max(g.gap - g.score * 2 * g.u, 130 * g.u);
     const top = margin + Math.random() * Math.max(10, floor - margin * 2 - gap);
-    const c = CHAINS[Math.floor(Math.random() * CHAINS.length)];
-    g.pipes.push({ x: g.w + g.pw, top, gap, chain: c, passed: false });
+    const bag = g.order[g.bi++ % g.order.length];
+    g.pipes.push({ x: g.w + g.pw, top, gap, bag, passed: false });
   }
   function tick(dt) {
     const g = gState; g.t += dt;
@@ -925,17 +927,19 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     if (dead) { if (navigator.vibrate) try { navigator.vibrate(80); } catch (_) {} endGame(); }
   }
   function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
-  function drawPillar(g, p, y, h, capAtBottom) {
-    const [name, bg, fg] = p.chain, u = g.u, capH = 34 * u, x = p.x;
-    ctx.fillStyle = bg; ctx.fillRect(x + 4 * u, y, g.pw - 8 * u, h);
-    ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.fillRect(x + 10 * u, y, 6 * u, h);
-    const cy = capAtBottom ? y + h - capH : y;
-    ctx.fillStyle = bg; rr(x - 4 * u, cy, g.pw + 8 * u, capH, 8 * u); ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,.18)"; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = fg; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    let fs = 15 * u; ctx.font = "400 " + fs + "px 'Lilita One', sans-serif";
-    while (ctx.measureText(name).width > g.pw + 2 * u && fs > 8) { fs -= 1; ctx.font = "400 " + fs + "px 'Lilita One', sans-serif"; }
-    ctx.fillText(name, x + g.pw / 2, cy + capH / 2 + 1);
+  // a column of one kind of bag; the bag next to the gap is whole, the rest stack away from it
+  function drawPillar(g, p, y0, y1, fromBottom) {
+    const im = bagImg(p.bag), box = BAG_BOX[p.bag] || [0, 0, 240, 240];
+    const bw = g.pw + 6 * g.u, bh = bw * box[3] / box[2], x = p.x - 3 * g.u;
+    ctx.save(); ctx.beginPath(); ctx.rect(x - 2, y0, bw + 4, y1 - y0); ctx.clip();
+    if (im.complete && im.naturalWidth) {
+      const k = im.naturalWidth / 240, step = bh * 0.9;
+      const ys = [];
+      if (fromBottom) for (let y = y1 - bh; y + bh > y0; y -= step) ys.push(y);
+      else for (let y = y0; y < y1; y += step) ys.push(y);
+      ys.reverse().forEach(y => ctx.drawImage(im, box[0] * k, box[1] * k, box[2] * k, box[3] * k, x, y, bw, bh));
+    } else { ctx.fillStyle = BAG_COLOR[p.bag] || "#2ea44f"; ctx.fillRect(x, y0, bw, y1 - y0); }
+    ctx.restore();
   }
   function drawDog(g) {
     ctx.save(); ctx.translate(g.x, g.y);
@@ -959,7 +963,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     ctx.fillStyle = sky; ctx.fillRect(0, 0, g.w, g.h);
     ctx.fillStyle = "rgba(255,255,255,.9)";
     for (let i = 0; i < 4; i++) { const cx = ((i * 160 * u - g.t * 18 * u) % (g.w + 160 * u) + g.w + 160 * u) % (g.w + 160 * u) - 80 * u, cy = (60 + i * 47 % 140) * u; ctx.beginPath(); ctx.arc(cx, cy, 18 * u, 0, 7); ctx.arc(cx + 20 * u, cy - 8 * u, 22 * u, 0, 7); ctx.arc(cx + 42 * u, cy, 16 * u, 0, 7); ctx.fill(); }
-    g.pipes.forEach(p => { drawPillar(g, p, -10, p.top + 10, true); drawPillar(g, p, p.top + p.gap, g.h, false); });
+    g.pipes.forEach(p => { drawPillar(g, p, 0, p.top, true); drawPillar(g, p, p.top + p.gap, g.h, false); });
     const floor = g.h - 30 * u;
     ctx.fillStyle = (cs.getPropertyValue("--accent") || "#2ea44f").trim(); ctx.fillRect(0, floor, g.w, g.h - floor);
     ctx.fillStyle = "rgba(255,255,255,.25)";
