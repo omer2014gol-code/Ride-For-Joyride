@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="build" content="20261109213508">
+<meta name="build" content="20261109214410">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="Find Ryan Trahan's Joyride candy in US stores. Community reports of what's on the shelf.">
 <link rel="icon" type="image/png" href="icons/favicon.png">
@@ -200,6 +200,19 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .ghud .glives { font-size: 20px; letter-spacing: 2px; min-width: 70px; }
 .ghud .btn { padding: 6px 14px; font-size: 14px; }
 .gstage { position: relative; flex: 1; min-height: 0; touch-action: none; user-select: none; -webkit-user-select: none; }
+.gpick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.gpick button { font: inherit; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 10px; border-radius: 16px; border: 2px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+.gpick button:hover, .gpick button:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+.gpick img { width: 72px; height: 72px; object-fit: contain; }
+.gpick b { font-family: var(--display); font-weight: 400; font-size: 20px; }
+.gpick small { color: var(--muted); font-size: 12.5px; }
+.phud { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; }
+.pside { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 13px; font-weight: 800; }
+.pside.on { color: var(--accent); }
+.pside .pb { display: flex; gap: 2px; min-height: 20px; flex-wrap: wrap; }
+.pside .pb canvas { width: 20px; height: 20px; }
+.pturn { font-family: var(--display); font-size: 18px; text-align: center; flex: 1; }
+.pmsg { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); background: rgba(20, 8, 30, .78); color: #fff; font-weight: 800; padding: 8px 16px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
 .gstage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .gpanel { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; }
 .gcard { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 20px 18px; width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 10px 30px rgba(20, 8, 30, .12); }
@@ -335,6 +348,36 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         <div id="gBody"></div>
         <button class="btn" id="gStart" type="button">Play</button>
         <div class="glb" id="gBoard"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="scrim" id="gpscrim" hidden>
+  <div class="sheet" lang="en" role="dialog" aria-labelledby="gpTitle">
+    <h2 id="gpTitle">Games</h2>
+    <div class="gpick">
+      <button type="button" id="pickHop"><img src="icons/spock.png" alt=""><b>Spock Hop</b><small>Hop through towers of bags</small></button>
+      <button type="button" id="pickPool"><img src="icons/spock-ball.png" alt=""><b>Spock Pool</b><small>8-ball against the robot</small></button>
+    </div>
+    <div class="actions"><button class="btn ghost" id="gpClose" type="button">Close</button></div>
+  </div>
+</div>
+<div class="game" id="pool" lang="en" role="dialog" aria-label="Spock Pool" hidden>
+  <div class="phud">
+    <div class="pside" id="pYou"><span>You</span><div class="pb" id="pYouBalls"></div></div>
+    <div class="pturn" id="pTurn"></div>
+    <div class="pside" id="pBot" style="align-items:flex-end"><span>Robot 🤖</span><div class="pb" id="pBotBalls"></div></div>
+    <button class="btn ghost" id="pClose" type="button" style="padding:6px 12px;font-size:14px">Exit</button>
+  </div>
+  <div class="gstage" id="pStage">
+    <canvas id="pCanvas"></canvas>
+    <div class="pmsg" id="pMsg" hidden></div>
+    <div class="gpanel" id="pPanel">
+      <div class="gcard">
+        <h2 id="poolTitle">Spock <span>Pool</span></h2>
+        <div id="pBody"></div>
+        <button class="btn" id="pStart" type="button">Play</button>
+        <div class="glb" id="pBoard"></div>
       </div>
     </div>
   </div>
@@ -576,6 +619,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     const isAdmin = isOwner && ((activeAcct(me) || {}).name || "").toLowerCase() === "omertheowner";
     $("adminbtn").hidden = !isAdmin;
     $("playbtn").hidden = !hasAccount();
+    if (!$("pool").hidden && P && P.over) renderPoolBoard();
     if (!$("game").hidden && !gameRunning) renderBoard();
     if (!isAdmin) $("ascrim").hidden = true;
     else if (!$("ascrim").hidden) renderAdmin();
@@ -869,7 +913,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   }
   let idle = null;
   function closeGame() { gameRunning = false; cancelAnimationFrame(gRaf); $("game").hidden = true; document.body.style.overflow = ""; }
-  $("playbtn").onclick = openGame;
+  $("playbtn").onclick = () => { if (!hasAccount()) { toast("Create an account to play"); return; } $("gpscrim").hidden = false; };
+  $("gpClose").onclick = () => { $("gpscrim").hidden = true; };
+  $("gpscrim").addEventListener("click", e => { if (e.target === $("gpscrim")) $("gpscrim").hidden = true; });
+  $("pickHop").onclick = () => { $("gpscrim").hidden = true; openGame(); };
+  $("pickPool").onclick = () => { $("gpscrim").hidden = true; openPool(); };
   $("gClose").onclick = closeGame;
   $("gStart").onclick = startGame;
   function flap() { if (gameRunning && gState) { gState.vy = -gState.jump; gState.started = true; } }
@@ -984,6 +1032,351 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     }
   }
 
+  // ---------- Spock Pool (8-ball against a robot) ----------
+  // Table in its own units: 500 x 1000, balls are Spock's face tinted like real pool balls.
+  // Wins against the robot live on each account in profiles/<uid>: accounts[i].poolWins
+  const TW = 500, TH = 1000, BR = 19, RAIL = 34, PR = 31;
+  const POCKETS = [[0, 0], [TW, 0], [-6, TH / 2], [TW + 6, TH / 2], [0, TH], [TW, TH]];
+  const BALL_COLOR = { 1: "#f2c200", 2: "#1f4fd1", 3: "#e0262b", 4: "#6a2ca8", 5: "#f07a12", 6: "#1d8a3a", 7: "#8a1f1f", 8: "#2a2a2a" };
+  const FACE = new Image(); FACE.src = "icons/spock-ball.png";
+  const SPR = {};
+  function sprite(n) {
+    if (SPR[n]) return SPR[n];
+    if (!(FACE.complete && FACE.naturalWidth)) return null;
+    const S = 128, c = document.createElement("canvas"); c.width = c.height = S;
+    const x = c.getContext("2d");
+    x.drawImage(FACE, 0, 0, S, S);
+    if (n !== 0) {
+      const col = BALL_COLOR[n > 8 ? n - 8 : n], t = document.createElement("canvas"); t.width = t.height = S;
+      const y = t.getContext("2d");
+      y.fillStyle = col;
+      if (n > 8) y.fillRect(0, S * 0.27, S, S * 0.46); else y.fillRect(0, 0, S, S);
+      y.globalCompositeOperation = "destination-in"; y.drawImage(FACE, 0, 0, S, S);
+      x.globalCompositeOperation = "multiply"; x.drawImage(t, 0, 0);
+      if (n === 8) { x.globalCompositeOperation = "source-atop"; x.fillStyle = "rgba(0,0,0,.35)"; x.fillRect(0, 0, S, S); }
+      x.globalCompositeOperation = "source-over";
+      // number disc on the forehead
+      x.fillStyle = "#fff"; x.beginPath(); x.arc(S / 2, S * 0.2, S * 0.17, 0, 7); x.fill();
+      x.strokeStyle = "rgba(0,0,0,.25)"; x.lineWidth = 2; x.stroke();
+      x.fillStyle = "#111"; x.font = "800 " + Math.round(S * 0.2) + "px Nunito, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle";
+      x.fillText(String(n), S / 2, S * 0.21);
+    }
+    // shine and rim
+    const g = x.createRadialGradient(S * 0.35, S * 0.3, S * 0.05, S * 0.5, S * 0.5, S * 0.52);
+    g.addColorStop(0, "rgba(255,255,255,.35)"); g.addColorStop(0.5, "rgba(255,255,255,0)"); g.addColorStop(1, "rgba(0,0,0,.35)");
+    x.globalCompositeOperation = "source-atop"; x.fillStyle = g; x.fillRect(0, 0, S, S); x.globalCompositeOperation = "source-over";
+    return (SPR[n] = c);
+  }
+  const pcv = $("pCanvas"), pctx = pcv.getContext("2d");
+  let P = null, pRaf = 0, pView = null;
+  const groupOf = n => n === 0 ? "cue" : n === 8 ? "eight" : n < 8 ? "solids" : "stripes";
+  function pLayout() {
+    const r = $("pStage").getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2);
+    pcv.width = Math.round(r.width * d); pcv.height = Math.round(r.height * d);
+    const fw = TW + RAIL * 2, fh = TH + RAIL * 2, k = Math.min(r.width / fw, r.height / fh) * 0.98;
+    pView = { w: r.width, h: r.height, k, ox: (r.width - fw * k) / 2 + RAIL * k, oy: (r.height - fh * k) / 2 + RAIL * k, d };
+  }
+  function toTable(e) { const r = $("pStage").getBoundingClientRect(); return { x: (e.clientX - r.left - pView.ox) / pView.k, y: (e.clientY - r.top - pView.oy) / pView.k }; }
+  function rack() {
+    const balls = [{ n: 0, x: TW / 2, y: TH * 0.75, vx: 0, vy: 0, in: false }];
+    const others = [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15].sort(() => Math.random() - .5);
+    // back corners: one solid, one stripe
+    const sIdx = others.findIndex(n => n < 8), sol = others.splice(sIdx, 1)[0];
+    const tIdx = others.findIndex(n => n > 8), str = others.splice(tIdx, 1)[0];
+    const dy = Math.sqrt(3) * (BR + 0.3), ax = TW / 2, ay = TH * 0.27;
+    for (let row = 0; row < 5; row++) for (let i = 0; i <= row; i++) {
+      let n;
+      if (row === 2 && i === 1) n = 8; else if (row === 4 && i === 0) n = sol; else if (row === 4 && i === 4) n = str; else n = others.pop();
+      balls.push({ n, x: ax + (i - row / 2) * (BR * 2 + 0.6), y: ay - row * dy, vx: 0, vy: 0, in: false });
+    }
+    return balls;
+  }
+  function openPool() {
+    $("pool").hidden = false; document.body.style.overflow = "hidden";
+    pLayout(); P = { balls: rack(), turn: "you", groups: { you: null, bot: null }, moving: false, aim: null, over: true };
+    renderPHud(); drawPool(); showPoolPanel(null);
+  }
+  function closePool() { cancelAnimationFrame(pRaf); $("pool").hidden = true; document.body.style.overflow = ""; P = null; }
+  $("pClose").onclick = closePool;
+  $("pStart").onclick = startPool;
+  document.addEventListener("keydown", e => { if (!$("pool").hidden && e.key === "Escape") closePool(); });
+  window.addEventListener("resize", () => { if (!$("pool").hidden) { pLayout(); drawPool(); } });
+  function myWins() { return (activeAcct(me) || {}).poolWins || 0; }
+  function renderPoolBoard() {
+    const box = $("pBoard"); box.replaceChildren(el("h3", null, "Most wins against the robot"));
+    const all = allAccounts().filter(a => a.poolWins > 0).sort((a, b) => b.poolWins - a.poolWins).slice(0, 10);
+    if (!all.length) { box.append(el("p", "none", "Nobody has beaten the robot yet.")); return; }
+    all.forEach((a, i) => {
+      const row = el("div", "row" + (a.uid === me && a.id === myAcctId() ? " mine" : ""));
+      row.append(el("span", "rk", i < 3 ? ["🥇", "🥈", "🥉"][i] : String(i + 1)), avatarEl(a.uid, "", a.bag, a.name, a.id), el("span", null, a.name), el("span", "sc", String(a.poolWins)));
+      box.append(row);
+    });
+  }
+  function showPoolPanel(result) {
+    $("pPanel").hidden = false;
+    if (!result) {
+      $("poolTitle").innerHTML = "Spock <span>Pool</span>";
+      $("pBody").replaceChildren(el("p", null, "8-ball against the robot. Drag back from anywhere, like a slingshot, and let go to shoot. The further you pull, the harder the shot. Sink all your Spocks (1–7 or 9–15), then the black 8."));
+      $("pStart").textContent = "Break";
+    } else {
+      $("poolTitle").textContent = result.win ? "You win! 🎉" : "Robot wins";
+      $("pBody").replaceChildren(el("p", result.win ? "gnew" : null, result.why), el("p", null, "Your wins against the robot: " + result.wins));
+      $("pStart").textContent = "Play again";
+    }
+    renderPoolBoard();
+    setTimeout(() => $("pStart").focus(), 0);
+  }
+  function startPool() {
+    $("pPanel").hidden = true; pLayout();
+    P = { balls: rack(), turn: Math.random() < 0.5 ? "you" : "bot", groups: { you: null, bot: null }, moving: false, aim: null, over: false, broke: false };
+    renderPHud(); drawPool();
+    flashMsg(P.turn === "you" ? "You break" : "Robot breaks");
+    if (P.turn === "bot") setTimeout(botShot, 1100);
+  }
+  let msgT; function flashMsg(t) { const m = $("pMsg"); m.textContent = t; m.hidden = false; clearTimeout(msgT); msgT = setTimeout(() => m.hidden = true, 1500); }
+  function left(group) { return P.balls.filter(b => !b.in && groupOf(b.n) === group).map(b => b.n).sort((a, b) => a - b); }
+  function renderPHud() {
+    if (!P) return;
+    const mini = (n) => { const c = document.createElement("canvas"); c.width = c.height = 40; const sp = sprite(n); if (sp) c.getContext("2d").drawImage(sp, 0, 0, 40, 40); return c; };
+    for (const who of ["you", "bot"]) {
+      const g = P.groups[who], box = $(who === "you" ? "pYouBalls" : "pBotBalls");
+      box.replaceChildren(...(g ? (left(g).length ? left(g) : [8]).map(mini) : [el("small", null, "open table")]));
+      $(who === "you" ? "pYou" : "pBot").classList.toggle("on", P.turn === who && !P.over);
+      $(who === "you" ? "pYou" : "pBot").firstElementChild.textContent = (who === "you" ? "You" : "Robot 🤖") + (g ? " · " + g : "");
+    }
+    $("pTurn").textContent = P.over ? "" : P.moving ? "" : P.turn === "you" ? "Your turn" : "Robot's turn";
+  }
+  // --- aiming (slingshot) ---
+  const stageP = $("pStage");
+  stageP.addEventListener("pointerdown", e => {
+    if (!P || P.over || P.moving || P.turn !== "you" || !$("pPanel").hidden) return;
+    e.preventDefault(); stageP.setPointerCapture(e.pointerId);
+    const t = toTable(e); P.aim = { sx: t.x, sy: t.y, x: t.x, y: t.y, active: true };
+  });
+  stageP.addEventListener("pointermove", e => { if (P && P.aim && P.aim.active) { const t = toTable(e); P.aim.x = t.x; P.aim.y = t.y; drawPool(); } });
+  stageP.addEventListener("pointerup", () => {
+    if (!P || !P.aim || !P.aim.active) return;
+    const a = P.aim; P.aim = null;
+    const dx = a.sx - a.x, dy = a.sy - a.y, len = Math.hypot(dx, dy);
+    if (len < 12) { drawPool(); return; }
+    const power = Math.min(len / 330, 1);
+    shoot(dx / len, dy / len, power);
+  });
+  stageP.addEventListener("pointercancel", () => { if (P) { P.aim = null; drawPool(); } });
+  function aimDir() {
+    if (!P || !P.aim) return null;
+    const dx = P.aim.sx - P.aim.x, dy = P.aim.sy - P.aim.y, len = Math.hypot(dx, dy);
+    return len < 12 ? null : { x: dx / len, y: dy / len, p: Math.min(len / 330, 1) };
+  }
+  // first ball the cue would touch along a direction
+  function firstContact(cue, ux, uy) {
+    let best = null;
+    P.balls.forEach(b => {
+      if (b.in || b === cue) return;
+      const fx = b.x - cue.x, fy = b.y - cue.y, t = fx * ux + fy * uy;
+      if (t <= 0) return;
+      const d2 = fx * fx + fy * fy - t * t, rr = 4 * BR * BR;
+      if (d2 > rr) return;
+      const hit = t - Math.sqrt(rr - d2);
+      if (!best || hit < best.t) best = { t: hit, b };
+    });
+    return best;
+  }
+  function shoot(ux, uy, power) {
+    const cue = P.balls[0];
+    const sp = 300 + power * 2300;
+    cue.vx = ux * sp; cue.vy = uy * sp;
+    P.moving = true; P.shot = { by: P.turn, first: null, sunk: [], rail: false };
+    renderPHud();
+    let last = performance.now();
+    cancelAnimationFrame(pRaf);
+    const step = now => {
+      if (!P) return;
+      const dt = Math.min(0.033, (now - last) / 1000); last = now;
+      const N = 10; for (let i = 0; i < N; i++) physics(dt / N);
+      drawPool();
+      if (P.balls.some(b => !b.in && (b.vx || b.vy))) pRaf = requestAnimationFrame(step);
+      else { P.moving = false; endShot(); }
+    };
+    pRaf = requestAnimationFrame(step);
+  }
+  function inMouth(b) {
+    const m = PR * 1.25;
+    if ((b.x < m || b.x > TW - m) && (b.y < m || b.y > TH - m)) return true;
+    return Math.abs(b.y - TH / 2) < PR * 0.95 && (b.x < BR * 1.6 || b.x > TW - BR * 1.6);
+  }
+  function physics(dt) {
+    const bs = P.balls.filter(b => !b.in);
+    bs.forEach(b => {
+      if (!b.vx && !b.vy) return;
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      const sp = Math.hypot(b.vx, b.vy), ns = Math.max(0, sp * Math.exp(-0.75 * dt) - 55 * dt);
+      if (ns < 4) { b.vx = 0; b.vy = 0; } else { b.vx *= ns / sp; b.vy *= ns / sp; }
+      for (const [px, py] of POCKETS) if ((b.x - px) ** 2 + (b.y - py) ** 2 < PR * PR) { b.in = true; b.vx = b.vy = 0; P.shot.sunk.push(b.n); return; }
+      if (!inMouth(b)) {
+        if (b.x < BR) { b.x = BR; b.vx = Math.abs(b.vx) * 0.78; P.shot.rail = true; }
+        if (b.x > TW - BR) { b.x = TW - BR; b.vx = -Math.abs(b.vx) * 0.78; P.shot.rail = true; }
+        if (b.y < BR) { b.y = BR; b.vy = Math.abs(b.vy) * 0.78; P.shot.rail = true; }
+        if (b.y > TH - BR) { b.y = TH - BR; b.vy = -Math.abs(b.vy) * 0.78; P.shot.rail = true; }
+      } else if (b.x < -PR || b.x > TW + PR || b.y < -PR || b.y > TH + PR) { b.in = true; b.vx = b.vy = 0; P.shot.sunk.push(b.n); }
+    });
+    for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+      const a = bs[i], b = bs[j]; if (a.in || b.in) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy;
+      if (d2 >= 4 * BR * BR || d2 === 0) continue;
+      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d, over = 2 * BR - d;
+      a.x -= nx * over / 2; a.y -= ny * over / 2; b.x += nx * over / 2; b.y += ny * over / 2;
+      const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+      if (rel <= 0) continue;
+      const imp = rel * 0.97;
+      a.vx -= imp * nx; a.vy -= imp * ny; b.vx += imp * nx; b.vy += imp * ny;
+      if (P.shot.first == null) { if (a.n === 0) P.shot.first = b.n; else if (b.n === 0) P.shot.first = a.n; }
+    }
+  }
+  function placeCue() {
+    const cue = P.balls[0]; cue.in = false; cue.vx = cue.vy = 0;
+    for (let k = 0; k < 200; k++) {
+      const x = TW / 2 + (k ? (Math.random() - .5) * (TW - 4 * BR) : 0), y = TH * 0.75 + (k ? (Math.random() - .5) * TH * 0.3 : 0);
+      if (P.balls.every(b => b === cue || b.in || Math.hypot(b.x - x, b.y - y) > 2 * BR + 2)) { cue.x = x; cue.y = y; return; }
+    }
+  }
+  function endShot() {
+    const s = P.shot, who = s.by, other = who === "you" ? "bot" : "you";
+    const scratch = s.sunk.includes(0), mine0 = P.groups[who];
+    const cleared = mine0 && left(mine0).length === 0;
+    const sunkOwn = s.sunk.filter(n => n !== 0 && n !== 8 && (!mine0 || groupOf(n) === mine0));
+    if (s.sunk.includes(8)) {
+      const win = !!(mine0 && cleared && !scratch);
+      return finishPool(who === "you" ? win : !win, win ? (who === "you" ? "You sank the 8 ball." : "The robot sank the 8 ball.") : (who === "you" ? "You sank the 8 ball too early" + (scratch ? " and scratched" : "") + "." : "The robot sank the 8 ball too early" + (scratch ? " and scratched" : "") + "."));
+    }
+    if (!P.groups.you && P.broke && !scratch) {
+      const firstSunk = s.sunk.find(n => n !== 0 && n !== 8);
+      if (firstSunk) { const g = groupOf(firstSunk); P.groups[who] = g; P.groups[other] = g === "solids" ? "stripes" : "solids"; flashMsg((who === "you" ? "You are " : "Robot is ") + g); }
+    }
+    P.broke = true;
+    const mine = P.groups[who];
+    let foul = "";
+    if (scratch) foul = "Scratch!";
+    else if (s.first == null) foul = "Foul: no ball hit";
+    else if (mine && groupOf(s.first) !== mine && !(s.first === 8 && left(mine).length === 0)) foul = "Foul: hit the wrong ball first";
+    if (scratch) placeCue();
+    const keep = !foul && (mine ? s.sunk.some(n => groupOf(n) === mine) : sunkOwn.length > 0);
+    if (foul) flashMsg(foul);
+    if (!keep) P.turn = other;
+    renderPHud(); drawPool();
+    if (P.turn === "bot") setTimeout(botShot, foul ? 1300 : 900);
+  }
+  async function finishPool(win, why) {
+    P.over = true; renderPHud(); drawPool();
+    const wins = myWins() + (win ? 1 : 0);
+    setTimeout(() => showPoolPanel({ win, why, wins }), 700);
+    if (win && db && me) {
+      try {
+        const accounts = accountsOf(me).map(a => Object.assign({}, a)), id = myAcctId(), a = accounts.find(x => x.id === id);
+        if (a) { a.poolWins = (a.poolWins || 0) + 1; await saveMine(accounts, (profiles[me] || {}).active || id); }
+      } catch (_) { toast("Couldn't save your win"); }
+    }
+  }
+  // --- robot ---
+  function pathClear(x1, y1, x2, y2, skip) {
+    const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy || 1;
+    return P.balls.every(b => {
+      if (b.in || skip.includes(b)) return true;
+      const t = Math.max(0, Math.min(1, ((b.x - x1) * dx + (b.y - y1) * dy) / L2));
+      return Math.hypot(x1 + dx * t - b.x, y1 + dy * t - b.y) > 2 * BR - 1;
+    });
+  }
+  function botShot() {
+    if (!P || P.over || P.turn !== "bot") return;
+    const cue = P.balls[0], g = P.groups.bot;
+    let targets = P.balls.filter(b => !b.in && b.n !== 0 && (g ? (left(g).length ? groupOf(b.n) === g : b.n === 8) : b.n !== 8));
+    if (!P.broke) { const sp = 0.92; const ang = -Math.PI / 2 + (Math.random() - .5) * 0.04; return aimThen(Math.cos(ang), Math.sin(ang), sp); }
+    let best = null;
+    targets.forEach(b => POCKETS.forEach(([px, py]) => {
+      const tx = Math.min(TW - 6, Math.max(6, px)), ty = Math.min(TH - 6, Math.max(6, py));
+      const bx = tx - b.x, by = ty - b.y, bl = Math.hypot(bx, by);
+      const gx = b.x - bx / bl * 2 * BR, gy = b.y - by / bl * 2 * BR;
+      const cx = gx - cue.x, cy = gy - cue.y, cl = Math.hypot(cx, cy);
+      if (cl < 1) return;
+      const cut = (cx * bx + cy * by) / (cl * bl);
+      if (cut < 0.35) return;
+      if (!pathClear(cue.x, cue.y, gx, gy, [cue, b]) || !pathClear(b.x, b.y, tx, ty, [b])) return;
+      const score = cut * cut * 900 / (cl + bl * 1.3);
+      if (!best || score > best.score) best = { score, ux: cx / cl, uy: cy / cl, dist: cl + bl * 1.6 / Math.max(cut, 0.4) };
+    }));
+    if (best) {
+      const err = (Math.random() - .5) * 0.05;
+      const c = Math.cos(err), s2 = Math.sin(err);
+      const ux = best.ux * c - best.uy * s2, uy = best.ux * s2 + best.uy * c;
+      return aimThen(ux, uy, Math.min(1, Math.max(0.28, (best.dist * 1.1 + 180) / 2300)));
+    }
+    // no clean shot: just hit the nearest legal ball
+    const near = targets.sort((a, b) => Math.hypot(a.x - cue.x, a.y - cue.y) - Math.hypot(b.x - cue.x, b.y - cue.y))[0];
+    if (!near) return aimThen(0, -1, 0.5);
+    const dx = near.x - cue.x, dy = near.y - cue.y, l = Math.hypot(dx, dy);
+    aimThen(dx / l, dy / l, 0.55);
+  }
+  function aimThen(ux, uy, power) {
+    // show the robot's cue for a moment, then shoot
+    const cue = P.balls[0], t0 = performance.now();
+    const anim = now => {
+      if (!P || P.over) return;
+      const k = Math.min(1, (now - t0) / 650);
+      P.botAim = { x: ux, y: uy, p: power * k };
+      drawPool();
+      if (k < 1) pRaf = requestAnimationFrame(anim);
+      else { P.botAim = null; shoot(ux, uy, power); }
+    };
+    pRaf = requestAnimationFrame(anim);
+  }
+  // --- drawing ---
+  function drawPool() {
+    if (!P || !pView) return;
+    const v = pView, c = pctx;
+    c.setTransform(v.d, 0, 0, v.d, 0, 0); c.clearRect(0, 0, v.w, v.h);
+    c.translate(v.ox, v.oy); c.scale(v.k, v.k);
+    // rails and felt
+    c.fillStyle = "#5a3418"; c.beginPath(); c.roundRect ? c.roundRect(-RAIL, -RAIL, TW + RAIL * 2, TH + RAIL * 2, 22) : c.rect(-RAIL, -RAIL, TW + RAIL * 2, TH + RAIL * 2); c.fill();
+    const felt = c.createRadialGradient(TW / 2, TH / 2, 50, TW / 2, TH / 2, TH * 0.7); felt.addColorStop(0, "#1f9a55"); felt.addColorStop(1, "#13703c");
+    c.fillStyle = felt; c.fillRect(0, 0, TW, TH);
+    c.strokeStyle = "rgba(255,255,255,.12)"; c.lineWidth = 2; c.beginPath(); c.moveTo(0, TH * 0.75); c.lineTo(TW, TH * 0.75); c.stroke();
+    c.fillStyle = "rgba(255,255,255,.75)"; [[TW / 2, TH * 0.27], [TW / 2, TH * 0.75]].forEach(([x, y]) => { c.beginPath(); c.arc(x, y, 3, 0, 7); c.fill(); });
+    c.fillStyle = "#e9d7a6"; for (let i = 1; i < 4; i++) [[TW * i / 4, -RAIL / 2], [TW * i / 4, TH + RAIL / 2]].forEach(([x, y]) => { c.beginPath(); c.arc(x, y, 3, 0, 7); c.fill(); });
+    for (let i = 1; i < 8; i++) if (i !== 4) [[-RAIL / 2, TH * i / 8], [TW + RAIL / 2, TH * i / 8]].forEach(([x, y]) => { c.beginPath(); c.arc(x, y, 3, 0, 7); c.fill(); });
+    c.fillStyle = "#0b0b0b"; POCKETS.forEach(([x, y]) => { c.beginPath(); c.arc(x, y, PR, 0, 7); c.fill(); });
+    // aim guide
+    const cue = P.balls[0], ad = P.botAim || aimDir();
+    if (ad && !cue.in && !P.moving) {
+      const hit = firstContact(cue, ad.x, ad.y), len = hit ? hit.t : 1400;
+      c.save(); c.setLineDash([8, 8]); c.strokeStyle = "rgba(255,255,255,.75)"; c.lineWidth = 2.5;
+      c.beginPath(); c.moveTo(cue.x, cue.y); c.lineTo(cue.x + ad.x * len, cue.y + ad.y * len); c.stroke(); c.setLineDash([]);
+      if (hit) {
+        const gx = cue.x + ad.x * hit.t, gy = cue.y + ad.y * hit.t;
+        c.strokeStyle = "rgba(255,255,255,.8)"; c.beginPath(); c.arc(gx, gy, BR, 0, 7); c.stroke();
+        const nx = hit.b.x - gx, ny = hit.b.y - gy, nl = Math.hypot(nx, ny) || 1;
+        c.beginPath(); c.moveTo(hit.b.x, hit.b.y); c.lineTo(hit.b.x + nx / nl * 90, hit.b.y + ny / nl * 90); c.stroke();
+      }
+      // cue stick
+      const back = BR + 10 + ad.p * 90;
+      c.lineCap = "round"; c.strokeStyle = "#d9b47a"; c.lineWidth = 9;
+      c.beginPath(); c.moveTo(cue.x - ad.x * back, cue.y - ad.y * back); c.lineTo(cue.x - ad.x * (back + 380), cue.y - ad.y * (back + 380)); c.stroke();
+      c.strokeStyle = "#f5f1e8"; c.lineWidth = 9; c.beginPath(); c.moveTo(cue.x - ad.x * back, cue.y - ad.y * back); c.lineTo(cue.x - ad.x * (back + 14), cue.y - ad.y * (back + 14)); c.stroke();
+      c.restore();
+      // power bar
+      c.fillStyle = "rgba(0,0,0,.35)"; c.fillRect(TW / 2 - 100, TH + RAIL * 0.3, 200, 10);
+      c.fillStyle = ad.p > 0.75 ? "#ff5a3c" : "#ffd23c"; c.fillRect(TW / 2 - 100, TH + RAIL * 0.3, 200 * ad.p, 10);
+    }
+    // balls
+    P.balls.forEach(b => {
+      if (b.in) return;
+      c.fillStyle = "rgba(0,0,0,.28)"; c.beginPath(); c.arc(b.x + 3, b.y + 4, BR, 0, 7); c.fill();
+      const sp = sprite(b.n);
+      if (sp) c.drawImage(sp, b.x - BR, b.y - BR, BR * 2, BR * 2);
+      else { c.fillStyle = b.n === 0 ? "#fff" : BALL_COLOR[b.n > 8 ? b.n - 8 : b.n]; c.beginPath(); c.arc(b.x, b.y, BR, 0, 7); c.fill(); }
+    });
+  }
+  FACE.onload = () => { if (P) { renderPHud(); drawPool(); } };
+
   let tt; function toast(t) { const e = $("toast"); e.textContent = t; e.hidden = false; clearTimeout(tt); tt = setTimeout(() => (e.hidden = true), 2600); }
   $("q").addEventListener("input", renderList);
   $("stateFilter").addEventListener("change", () => { $("regionFilter").value = ""; renderFilters(); renderList(); });
@@ -1055,7 +1448,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       try {
         const r = await fetch("./index.html?t=" + Date.now(), { cache: "no-store" });
         const m = /<meta name="build" content="([^"]+)">/.exec(await r.text());
-        if (m && m[1] !== mine && !gameRunning) {
+        if (m && m[1] !== mine && $("game").hidden && $("pool").hidden) {
           let tried = ""; try { tried = sessionStorage.getItem("triedBuild") || ""; } catch (_) {}
           if (tried === m[1]) return; // already reloaded for this build once; don't loop
           try { sessionStorage.setItem("triedBuild", m[1]); } catch (_) {}
