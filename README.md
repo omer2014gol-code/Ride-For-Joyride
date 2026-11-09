@@ -1,6 +1,6 @@
 # Ride For Joyride
 
-![Joyride Sour Watermelon Wedges](banner.png)
+![A Joyride sour watermelon wedge](banner.png)
 
 A community tracker for Ryan Trahan's Joyride candy in US stores. Sign in, pick a username and a bag, and report how much Joyride is on the shelf.
 
