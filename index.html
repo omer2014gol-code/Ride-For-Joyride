@@ -214,6 +214,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     <p>Use your Google account to sign in. Then pick a username and a bag for your profile picture.</p>
     <button class="btn" id="googleBtn" type="button">Sign in with Google</button>
   </div>
+  <p class="uid" id="myuid" hidden></p>
   <div class="summary" id="summary"></div>
   <div class="notice" id="notice" hidden></div>
   <div class="list" id="list">
@@ -784,7 +785,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     const prov = new firebase.auth.GoogleAuthProvider();
     firebase.auth().signInWithPopup(prov).catch(e => {
       if (e && (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment")) firebase.auth().signInWithRedirect(prov);
-      else toast("Sign-in didn't finish. Try again.");
+      else if (e && e.code === "auth/unauthorized-domain") notice("Sign-in is blocked: add " + location.hostname + " to Firebase > Authentication > Settings > Authorized domains.");
+      else if (e && e.code === "auth/operation-not-allowed") notice("Sign-in is blocked: turn on Google in Firebase > Authentication > Sign-in method.");
+      else if (e && e.code === "auth/popup-closed-by-user") toast("Sign-in window was closed. Try again.");
+      else notice("Sign-in error: " + ((e && (e.code || e.message)) || "unknown"));
     });
   };
   if (!cfg.apiKey || !window.firebase) {
@@ -805,12 +809,14 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       $("signin").hidden = true;
       me = u.uid; myName = u.displayName || ""; isOwner = !!cfg.adminUid && u.uid === cfg.adminUid; db = fdb;
       $("p-uid").textContent = "Your user ID: " + u.uid;
+      $("myuid").textContent = "Your user ID: " + u.uid; $("myuid").hidden = false;
+      const dbErr = (e) => notice(e && e.code === "permission-denied" ? "The database refused access. Paste the rules from firestore.rules into Firebase > Firestore Database > Rules and click Publish." : (e && (e.code === "not-found" || e.code === "failed-precondition")) ? "The database doesn't exist yet. Create it in Firebase > Firestore Database > Create database." : "Database error: " + ((e && (e.code || e.message)) || "unknown"));
       renderMe();
       unsubs.push(db.collection("profiles").onSnapshot(snap => {
         profiles = {}; snap.docs.forEach(x => { profiles[x.id] = x.data() || {}; });
         profilesLoaded = true;
         renderMe(); renderList(); applyGate();
-      }, () => notice("Couldn't load profiles. Reload the page.")));
+      }, dbErr));
       if (isOwner) unsubs.push(db.collection("visits").onSnapshot(snap => {
         visits = {}; snap.docs.forEach(x => { visits[x.id] = x.data() || {}; });
         if (!$("ascrim").hidden) renderVisits();
@@ -820,7 +826,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         snap.docs.forEach(x => { const d = x.data() || {}; (Array.isArray(d.items) ? d.items : []).forEach(it => { if (it && typeof it === "object") all.push(Object.assign({}, it, { by: x.id })); }); });
         reports = all.filter(r => r.city && typeof r.at === "number" && (r.chain || r.store) && r.id).sort((a, b) => b.at - a.at);
         render();
-      }, () => notice("Couldn't load reports. Reload the page.")));
+      }, dbErr));
     });
   }
   setInterval(renderList, 60000);
